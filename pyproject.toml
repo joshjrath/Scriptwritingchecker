@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scriptcheck"
+version = "0.1.0"
+description = "Track script assignments and submissions across Discord threads"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+discord = ["discord.py>=2.3,<3"]
+
+[project.scripts]
+scriptcheck = "scriptcheck.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["scriptcheck*"]

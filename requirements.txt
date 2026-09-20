@@ -1,0 +1,3 @@
+# Only needed for `scriptcheck fetch` (the live Discord pull).
+# Reporting from an existing data file works with the standard library alone.
+discord.py>=2.3,<3

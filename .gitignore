@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+data/
+*.egg-info/
+build/
+dist/
+scriptcheck.config.local.json
+.env
+scriptcheck.config.json

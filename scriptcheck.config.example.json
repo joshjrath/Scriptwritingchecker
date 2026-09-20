@@ -1,0 +1,23 @@
+{
+  "my_user_ids": [
+    "YOUR_DISCORD_USER_ID"
+  ],
+  "my_names": [
+    "Josh",
+    "joshjrath"
+  ],
+  "my_roles": [
+    "SCRIPT"
+  ],
+  "channel_name_patterns": [
+    "assignments",
+    "workflow"
+  ],
+  "default_timezone": "America/New_York",
+  "preferred_timezones": [
+    "America/New_York"
+  ],
+  "display_timezone": "America/New_York",
+  "due_soon_hours": 48,
+  "data_file": "data/threads.json"
+}
