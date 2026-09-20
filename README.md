@@ -103,6 +103,13 @@ exact; matching by display name is the fallback.
 *New Application*. Under **Bot**, click *Reset Token* and copy it — that string
 is the bot's password, so treat it like one and never commit it.
 
+**1b. Leave "Public Bot" ON.** It is on by default, and the instinct to turn it
+off is wrong here: with it off, *only the application owner* can install the
+app, and installing into a server requires Manage Server there. Since an admin
+of someone else's server is doing the install, the app has to stay public. It
+does not mean anyone can read your data - the bot still only sees servers it is
+invited to.
+
 **2. Turn on the intent that everyone forgets.** Same page: *Privileged Gateway
 Intents* -> enable **MESSAGE CONTENT INTENT**. Without it every message arrives
 with empty text, so every brief looks blank and nothing parses. `doctor` checks

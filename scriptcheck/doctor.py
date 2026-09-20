@@ -83,7 +83,10 @@ def diagnose(facts: Facts, config: Config) -> list[Check]:
                 FAIL,
                 "The bot is not in any server.",
                 "An admin of the server has to open the invite URL. Run "
-                "`scriptcheck invite --client-id <APPLICATION ID>` to print it.",
+                "`scriptcheck invite --client-id <APPLICATION ID>` to print it. "
+                "If the link fails for them, check that Public Bot is ON in the "
+                "Developer Portal - with it off, only you can install the app, "
+                "and you need Manage Server in the target server to do that.",
             )
         )
         return checks
