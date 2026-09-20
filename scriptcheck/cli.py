@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import __version__
-from .config import Config
+from .config import Config, load_dotenv
 from .audit import render_audit, render_explain
 from .dashboard import render_dashboard
 from .doctor import DROPBOX_PERMISSIONS, READ_ONLY_PERMISSIONS, invite_url
@@ -388,6 +388,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    # Real environment variables win, so a hosted deploy ignores a stray .env.
+    load_dotenv()
     parser = build_parser()
     args = parser.parse_args(argv)
     try:

@@ -19,6 +19,41 @@ DEFAULT_CONFIG_PATHS = [
 ]
 
 
+def load_dotenv(path: str | Path = ".env", override: bool = False) -> list[str]:
+    """Read a .env file into the environment. Returns the names it set.
+
+    Small enough not to be worth a dependency, and it means `serve` works
+    straight after filling in .env, with no `export` or `source` step to
+    forget - which is exactly where a first run usually goes wrong.
+    """
+
+    path = Path(path)
+    if not path.is_file():
+        return []
+
+    applied: list[str] = []
+    for raw in path.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if not key:
+            continue
+        value = value.strip()
+        # Strip one matching pair of surrounding quotes, and nothing else.
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if override or key not in os.environ:
+            os.environ[key] = value
+            applied.append(key)
+    return applied
+
+
 @dataclass
 class Config:
     # --- who am I -----------------------------------------------------------

@@ -220,3 +220,79 @@ class TestConfigFromEnvironment(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             Config.load()
         self.assertIn("my_rolls", str(ctx.exception))
+
+
+class TestDotenv(unittest.TestCase):
+    def setUp(self):
+        import os
+        import tempfile
+
+        self.dir = tempfile.mkdtemp()
+        self.saved = dict(os.environ)
+
+    def tearDown(self):
+        import os
+
+        os.environ.clear()
+        os.environ.update(self.saved)
+
+    def write(self, text):
+        from pathlib import Path
+
+        path = Path(self.dir) / ".env"
+        path.write_text(text)
+        return path
+
+    def test_values_are_loaded(self):
+        import os
+
+        from scriptcheck.config import load_dotenv
+
+        path = self.write("DISCORD_BOT_TOKEN=abc123\nSCRIPTCHECK_MY_USER_ID=999\n")
+        applied = load_dotenv(path)
+        self.assertEqual(sorted(applied), ["DISCORD_BOT_TOKEN", "SCRIPTCHECK_MY_USER_ID"])
+        self.assertEqual(os.environ["DISCORD_BOT_TOKEN"], "abc123")
+
+    def test_comments_blanks_and_export_prefixes(self):
+        import os
+
+        from scriptcheck.config import load_dotenv
+
+        path = self.write(
+            "# a comment\n\n  \nexport SCRIPTCHECK_ACCESS_TOKEN=shh\nnot_a_pair\n"
+        )
+        load_dotenv(path)
+        self.assertEqual(os.environ["SCRIPTCHECK_ACCESS_TOKEN"], "shh")
+
+    def test_quotes_are_stripped_once(self):
+        import os
+
+        from scriptcheck.config import load_dotenv
+
+        self.write('A="quoted"\nB=\'single\'\nC="keeps "inner" quotes"\n')
+        load_dotenv(self.write('A="quoted"\nB=\'single\'\nC=say "hi"\n'))
+        self.assertEqual(os.environ["A"], "quoted")
+        self.assertEqual(os.environ["B"], "single")
+        self.assertEqual(os.environ["C"], 'say "hi"')
+
+    def test_a_real_environment_variable_wins(self):
+        import os
+
+        from scriptcheck.config import load_dotenv
+
+        os.environ["DISCORD_BOT_TOKEN"] = "from-the-host"
+        load_dotenv(self.write("DISCORD_BOT_TOKEN=from-the-file\n"))
+        self.assertEqual(os.environ["DISCORD_BOT_TOKEN"], "from-the-host")
+
+    def test_a_missing_file_is_fine(self):
+        from scriptcheck.config import load_dotenv
+
+        self.assertEqual(load_dotenv("/nonexistent/.env"), [])
+
+    def test_a_webhook_url_with_an_equals_sign_survives(self):
+        import os
+
+        from scriptcheck.config import load_dotenv
+
+        load_dotenv(self.write("SCRIPTCHECK_WEBHOOK_URL=https://x.com/a?b=c&d=e\n"))
+        self.assertEqual(os.environ["SCRIPTCHECK_WEBHOOK_URL"], "https://x.com/a?b=c&d=e")

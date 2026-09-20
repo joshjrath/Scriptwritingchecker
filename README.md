@@ -85,9 +85,15 @@ readable deadline is reported as `NO_DEADLINE` rather than quietly assumed safe.
 ```bash
 git clone https://github.com/joshjrath/Scriptwritingchecker.git
 cd Scriptwritingchecker
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt      # only needed for the live Discord pull
+cp .env.example .env                 # then fill in the four values
 python -m scriptcheck init           # writes scriptcheck.config.json
 ```
+
+`.env` is read automatically by every command, so there is no `export` or
+`source` step to forget. Real environment variables always win, so a hosted
+deploy ignores a stray `.env` in the image.
 
 (`scriptcheck.config.example.json` is the same thing, checked in for reference;
 your own `scriptcheck.config.json` is git-ignored. With no config at all the tool
