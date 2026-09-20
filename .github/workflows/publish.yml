@@ -1,7 +1,8 @@
 name: Refresh script board
 
-# One scheduled pass: pull the threads with the bot, publish the dashboard,
-# and ping the webhook only when something actually needs Josh.
+# The whole point of this job is that nobody has to remember anything:
+# it pulls the threads with the bot, publishes the board, and speaks up
+# only when something is actually owed - or when the run itself breaks.
 on:
   schedule:
     - cron: "0 13 * * *"   # 9am ET
@@ -16,6 +17,11 @@ permissions:
 concurrency:
   group: script-board
   cancel-in-progress: true
+
+env:
+  DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+  SCRIPTCHECK_MY_USER_ID: ${{ secrets.SCRIPTCHECK_MY_USER_ID }}
+  SCRIPTCHECK_WEBHOOK_URL: ${{ secrets.SCRIPTCHECK_WEBHOOK_URL }}
 
 jobs:
   refresh:
@@ -32,29 +38,25 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # Fails loudly if the bot lost access, before a broken fetch can
+      # quietly publish an empty board.
+      - name: Preflight the bot's access
+        run: python -m scriptcheck doctor
+
       - name: Pull threads from Discord
-        env:
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          SCRIPTCHECK_MY_USER_ID: ${{ secrets.SCRIPTCHECK_MY_USER_ID }}
         run: python -m scriptcheck fetch -o data/threads.json
 
       - name: Print the report to the job log
-        env:
-          SCRIPTCHECK_MY_USER_ID: ${{ secrets.SCRIPTCHECK_MY_USER_ID }}
         run: python -m scriptcheck report -i data/threads.json
 
       # Not a gate - a record. If parse coverage starts slipping because the
       # brief format changed, it shows up here before the board goes wrong.
       - name: Audit what was read vs assumed
-        env:
-          SCRIPTCHECK_MY_USER_ID: ${{ secrets.SCRIPTCHECK_MY_USER_ID }}
         run: python -m scriptcheck audit -i data/threads.json
 
       # --redact-links keeps delivery times but strips Drive URLs and thread
       # links. Drop the flag only if the Pages site is private.
       - name: Build the dashboard
-        env:
-          SCRIPTCHECK_MY_USER_ID: ${{ secrets.SCRIPTCHECK_MY_USER_ID }}
         run: python -m scriptcheck dashboard -i data/threads.json -o site/index.html --redact-links
 
       - uses: actions/configure-pages@v5
@@ -64,8 +66,39 @@ jobs:
       - id: deploy
         uses: actions/deploy-pages@v4
 
+      # Quiet on ordinary days; a full digest on Monday mornings so a silent
+      # week is never mistaken for a working one.
       - name: Remind me if anything is owed
-        env:
-          SCRIPTCHECK_WEBHOOK_URL: ${{ secrets.SCRIPTCHECK_WEBHOOK_URL }}
-          SCRIPTCHECK_MY_USER_ID: ${{ secrets.SCRIPTCHECK_MY_USER_ID }}
-        run: python -m scriptcheck notify -i data/threads.json --only-if-action
+        run: |
+          if [ "$(date -u +%u)" = "1" ] && [ "$(date -u +%H)" -lt 18 ]; then
+            python -m scriptcheck notify -i data/threads.json
+          else
+            python -m scriptcheck notify -i data/threads.json --only-if-action
+          fi
+
+      # Silence must never mean "it broke". If any step above failed, say so
+      # in the same place the reminders go.
+      - name: Say so if this run failed
+        if: failure()
+        run: |
+          python - <<'PY'
+          import os, sys
+          sys.path.insert(0, ".")
+          from scriptcheck.notify import send_webhook
+          url = os.environ.get("SCRIPTCHECK_WEBHOOK_URL", "")
+          run = "%s/%s/actions/runs/%s" % (
+              os.environ["GITHUB_SERVER_URL"],
+              os.environ["GITHUB_REPOSITORY"],
+              os.environ["GITHUB_RUN_ID"],
+          )
+          if not url:
+              print("No webhook configured; cannot report the failure.")
+              sys.exit(0)
+          send_webhook(
+              url,
+              "**Script board did not update.**\n"
+              "The scheduled run failed, so the board is stale and no reminder "
+              "was sent. Nothing below it can be trusted until this is fixed.\n"
+              f"{run}",
+          )
+          PY

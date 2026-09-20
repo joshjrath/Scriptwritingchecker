@@ -97,50 +97,88 @@ Then put your own Discord user ID in the config (Discord → Settings → Advanc
 Developer Mode, then right-click yourself → Copy User ID). Matching by ID is
 exact; matching by display name is the fallback.
 
-### Getting the data in
+### Setting up the bot (once, then never again)
 
-**Option A — a bot (best, needs a server admin).** Create an application at
-<https://discord.com/developers/applications>, add a bot, and under *Bot →
-Privileged Gateway Intents* enable **Message Content Intent**. Invite it with
-`View Channels` + `Read Message History` on the assignment category. Then:
+**1. Create the application.** <https://discord.com/developers/applications> ->
+*New Application*. Under **Bot**, click *Reset Token* and copy it — that string
+is the bot's password, so treat it like one and never commit it.
+
+**2. Turn on the intent that everyone forgets.** Same page: *Privileged Gateway
+Intents* -> enable **MESSAGE CONTENT INTENT**. Without it every message arrives
+with empty text, so every brief looks blank and nothing parses. `doctor` checks
+this explicitly because it is the single most common way this setup silently
+does nothing.
+
+**3. Get the invite URL.** Copy the *Application ID* from the General
+Information page, then:
+
+```bash
+python -m scriptcheck invite --client-id <APPLICATION_ID>
+```
+
+That prints a URL granting **View Channels + Read Message History only**
+(permissions `66560`) — the bot cannot post, edit, delete, or react. Send it to
+an admin of the server. Below is a message you can paste as-is:
+
+> Hey — I built a small tool that watches my assignment threads and tells me
+> what I still owe, so nothing slips. It needs a read-only bot in the server to
+> see the threads I'm assigned to.
+>
+> It's **read-only**: View Channels and Read Message History, nothing else. It
+> can't post, edit, delete, or react. It reads the assignment channels only, and
+> it runs twice a day on a schedule — it isn't online otherwise.
+>
+> Invite link: `<paste the URL here>`
+>
+> If you'd rather scope it tighter, you can restrict the bot's role to just the
+> Content Allocation category and it'll work the same.
+
+**4. Prove it works.**
 
 ```bash
 export DISCORD_BOT_TOKEN="..."
-python -m scriptcheck check          # fetch + report in one go
+python -m scriptcheck doctor
 ```
 
-If you are not an admin of *Specular Industries*, someone who is has to invite
-the bot — Discord has no supported way for an account to read a server on your
-behalf, and automating your own user token is against Discord's terms, so this
-tool does not do it.
+`doctor` checks login, server membership, channel visibility, read-history
+permission, thread reachability, whether sampled messages actually carry text
+(the intent check), and whether your configured user ID really appears in the
+threads. Every failure comes with the specific fix. When it says *"Everything
+checks out"*, the unattended pipeline will work.
 
-**Option B — an export (no bot needed).** Export the channel with
-[DiscordChatExporter](https://github.com/Tyrrrz/DiscordChatExporter) in JSON
-format (include threads), then point the reporter at the file or the folder:
+**5. Let it run itself.** Add three repository secrets — `DISCORD_BOT_TOKEN`,
+`SCRIPTCHECK_MY_USER_ID`, `SCRIPTCHECK_WEBHOOK_URL` — and enable Pages
+(*Settings -> Pages -> Source: GitHub Actions*). After that the workflow
+preflights, fetches, audits, publishes the board, and pings you twice a day.
 
-```bash
-python -m scriptcheck report -i ./exports/
-```
+### Nothing here fails silently
 
-**Option C — hand-built JSON.** Any file in the native shape works; see
-`tests/make_fixture.py` for a complete, runnable example:
+A scheduled job you have to remember to check is not automation. So:
 
-```json
-{"version": 1, "threads": [
-  {"id": "1001", "name": "09-25-26 | VIDEO-001 | Title",
-   "parent_name": "secondary-assignments-workflow", "tags": ["Being Written"],
-   "jump_url": "https://discord.com/channels/…",
-   "messages": [
-     {"id": "2001", "author": {"id": "…", "display_name": "Ash"},
-      "content": "📝 SCRIPT @Josh\n• Deadline:\n  • 9/20/2026 @ 11:59 PM ET\n• Word Count: 5000 Words",
-      "created_at": "2026-09-19T23:55:00+00:00"}
-   ]}
-]}
-```
+* **The run preflights before it fetches**, so a bot that lost access can't
+  quietly publish an empty board.
+* **A failed run posts to your webhook**, saying the board is stale and not to
+  be trusted. Silence never means "broken".
+* **Monday mornings get a full digest** even when nothing is owed — proof of
+  life, so a quiet week is distinguishable from a dead workflow.
+* **The board shows its own age** and marks itself stale past 24 hours.
+* One thing to know: **GitHub disables scheduled workflows after 60 days of
+  repository inactivity** and emails the owner. The Monday digest is your
+  tripwire — if it stops arriving, re-enable the workflow in the Actions tab.
+
+### Without a bot
+
+If the invite ever falls through, everything except `fetch` still works on an
+export: run [DiscordChatExporter](https://github.com/Tyrrrz/DiscordChatExporter)
+over the channel in JSON (include threads) and point the reporter at it —
+`python -m scriptcheck report -i ./exports/`. Any file in the native shape works
+too; `tests/make_fixture.py` is a runnable example of it.
 
 ## Commands
 
 ```bash
+python -m scriptcheck invite --client-id ID  # print the read-only invite URL
+python -m scriptcheck doctor                 # prove the bot can see everything
 python -m scriptcheck fetch                  # pull threads from Discord -> data/threads.json
 python -m scriptcheck report                 # the full status report
 python -m scriptcheck report --action-only   # only what needs you
@@ -334,10 +372,12 @@ embedding in a host that supplies its own document shell.
 python -m unittest discover -s tests -t .
 ```
 
-72 tests cover title and deadline parsing (including the two-timezone briefs,
+89 tests cover title and deadline parsing (including the two-timezone briefs,
 Discord `<t:…>` timestamps, date-only deadlines and month-name dates), role-section
 assignment, link detection, every status transition, the report formats, and the
 dashboard's data embedding (including that a thread title cannot break out of the
 embedded JSON), plus the accuracy machinery: confidence levels, deadline-change
 detection, edited-message ambiguity, fetch-cap reporting, unknown role discovery
-and the overrides file.
+and the overrides file, plus every preflight rule (bad token, missing invite,
+unreadable channel, the message-content intent being off) against synthetic facts,
+so the diagnosis is verified without a live connection.

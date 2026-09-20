@@ -13,6 +13,7 @@ from . import __version__
 from .config import Config
 from .audit import render_audit, render_explain
 from .dashboard import render_dashboard
+from .doctor import READ_ONLY_PERMISSIONS, invite_url
 from .engine import build_assignments
 from .models import Status
 from .report import render
@@ -96,6 +97,34 @@ def cmd_report(args) -> int:
         a.status in (Status.OVERDUE, Status.SUBMITTED_LATE) for a in items
     ):
         return 2
+    return 0
+
+
+def cmd_doctor(args) -> int:
+    from .doctor import collect, diagnose, render
+
+    config = _load_config(args)
+    print("Connecting to Discord...", file=sys.stderr)
+    facts = collect(config, token=args.token)
+    checks = diagnose(facts, config)
+    print(render(checks))
+    return 0 if all(c.ok for c in checks) else 2
+
+
+def cmd_invite(args) -> int:
+    url = invite_url(args.client_id, READ_ONLY_PERMISSIONS)
+    print()
+    print("Send this to a server admin. It grants read-only access:")
+    print()
+    print(f"  {url}")
+    print()
+    print("  Permissions: View Channels + Read Message History only")
+    print(f"  ({READ_ONLY_PERMISSIONS} - the bot cannot post, edit or delete anything)")
+    print()
+    print("Then, in the Developer Portal for the same application:")
+    print("  Bot -> Privileged Gateway Intents -> enable MESSAGE CONTENT INTENT")
+    print("  Without it every brief arrives blank and nothing can be parsed.")
+    print()
     return 0
 
 
@@ -243,6 +272,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit the page without the <html>/<body> wrapper, for embedding.",
     )
     dashboard.set_defaults(func=cmd_dashboard)
+
+    doctor = sub.add_parser(
+        "doctor", help="Check the bot can see everything it needs. Run this first."
+    )
+    doctor.add_argument("--token", help="Bot token (else $DISCORD_BOT_TOKEN).")
+    doctor.add_argument("--timezone", help="Override the display timezone.")
+    doctor.set_defaults(func=cmd_doctor)
+
+    invite = sub.add_parser("invite", help="Print the read-only bot invite URL.")
+    invite.add_argument(
+        "--client-id",
+        required=True,
+        help="The application ID from the Discord Developer Portal.",
+    )
+    invite.set_defaults(func=cmd_invite)
 
     audit = sub.add_parser(
         "audit", help="Measure how much of the report was read vs assumed."
