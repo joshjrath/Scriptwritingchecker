@@ -228,6 +228,19 @@
     white-space: nowrap;
   }
   .freshness.stale { color: var(--today); border-color: color-mix(in srgb, var(--today) 50%, transparent); }
+  .freshness.live { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+  .freshness.dropped { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 50%, transparent); }
+  .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .freshness.live .dot { animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .freshness.live .dot { animation: none; } }
 
   main { padding-block: 20px 60px; display: flex; flex-direction: column; gap: 22px; }
 
@@ -1352,9 +1365,65 @@
     render();
   });
 
+  /* ---------- live updates ---------- */
+
+  function setStatus(cls, text) {
+    var fresh = document.getElementById("freshness");
+    fresh.hidden = false;
+    fresh.className = "freshness " + cls;
+    fresh.textContent = "";
+    fresh.appendChild(el("span", "dot"));
+    fresh.appendChild(document.createTextNode(text));
+  }
+
+  /* The page is served by the daemon, which pushes a new board whenever
+     Discord tells it something changed. Falls back to polling if the stream
+     cannot be held open (some proxies buffer SSE). */
+  function goLive() {
+    var retry = 0;
+
+    function poll() {
+      fetch("report.json", { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) { accept(data); })
+        .catch(function () { setStatus("dropped", "offline"); });
+    }
+
+    function accept(data) {
+      if (!data || !data.assignments) return;
+      DATA = data;
+      ITEMS = data.assignments;
+      retry = 0;
+      render();
+      setStatus("live", "live");
+    }
+
+    if (typeof EventSource === "undefined") {
+      setInterval(poll, 20e3);
+      poll();
+      return;
+    }
+
+    function connect() {
+      var source = new EventSource("events");
+      source.addEventListener("board", function (event) {
+        try { accept(JSON.parse(event.data)); } catch (err) { /* ignore a bad frame */ }
+      });
+      source.onopen = function () { setStatus("live", "live"); };
+      source.onerror = function () {
+        source.close();
+        setStatus("dropped", "reconnecting");
+        retry = Math.min(retry + 1, 6);
+        setTimeout(connect, 1000 * Math.pow(2, retry - 1));
+      };
+    }
+    connect();
+  }
+
   renderHeader(new Date());
   render();
   setInterval(tickHero, 1000);
   setInterval(render, 60e3);
+  if (DATA.live) goLive();
 })();
 </script>

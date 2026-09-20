@@ -69,6 +69,29 @@ class Config:
     #: Hand corrections that beat the parser, keyed by thread ID.
     overrides_file: str = "overrides.json"
 
+    # --- live mode ----------------------------------------------------------
+    #: Shared secret for the live board. Empty means anyone with the URL can
+    #: read it; set it here or as $SCRIPTCHECK_ACCESS_TOKEN.
+    access_token: str = ""
+    serve_host: str = "0.0.0.0"
+    serve_port: int = 8080
+    #: Safety net for events missed during a gateway reconnect.
+    resync_minutes: int = 15
+    #: Ping this long before a deadline. Only the tightest window that applies
+    #: fires, so a restart never sends a burst.
+    reminder_lead_hours: list[float] = field(default_factory=lambda: [24, 2])
+    #: Which alert kinds to send; see scriptcheck.alerts.ALL_KINDS.
+    alert_kinds: list[str] = field(
+        default_factory=lambda: [
+            "new_assignment",
+            "due_in",
+            "overdue",
+            "delivered",
+            "deadline_changed",
+            "needs_review",
+        ]
+    )
+
     @property
     def assume_time_obj(self) -> time:
         match = re.match(r"^(\d{1,2}):(\d{2})$", self.assume_time.strip())
@@ -102,6 +125,9 @@ class Config:
         webhook = os.environ.get("SCRIPTCHECK_WEBHOOK_URL")
         if webhook:
             self.webhook_url = webhook
+        token = os.environ.get("SCRIPTCHECK_ACCESS_TOKEN")
+        if token:
+            self.access_token = token
         user_id = os.environ.get("SCRIPTCHECK_MY_USER_ID")
         if user_id and user_id not in self.my_user_ids:
             self.my_user_ids.append(user_id)

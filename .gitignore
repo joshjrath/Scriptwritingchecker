@@ -11,3 +11,4 @@ scriptcheck.config.local.json
 scriptcheck.config.json
 site/
 overrides.json
+.env

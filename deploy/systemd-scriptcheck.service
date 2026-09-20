@@ -1,0 +1,20 @@
+# Run the live board on your own box or a Raspberry Pi:
+#   sudo cp deploy/systemd-scriptcheck.service /etc/systemd/system/
+#   sudo systemctl enable --now scriptcheck
+[Unit]
+Description=Script Board live daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=josh
+WorkingDirectory=/home/josh/Scriptwritingchecker
+Environment=PORT=8080
+EnvironmentFile=/home/josh/Scriptwritingchecker/.env
+ExecStart=/usr/bin/python3 -m scriptcheck serve
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -179,6 +179,7 @@ too; `tests/make_fixture.py` is a runnable example of it.
 ```bash
 python -m scriptcheck invite --client-id ID  # print the read-only invite URL
 python -m scriptcheck doctor                 # prove the bot can see everything
+python -m scriptcheck serve                  # LIVE: gateway + web server
 python -m scriptcheck fetch                  # pull threads from Discord -> data/threads.json
 python -m scriptcheck report                 # the full status report
 python -m scriptcheck report --action-only   # only what needs you
@@ -195,6 +196,89 @@ python -m scriptcheck notify --only-if-action             # post the digest to a
 
 `report --fail-on-missed` exits `2` when anything is overdue or was delivered
 late, so it can gate a cron job or CI step.
+
+## Real time
+
+`serve` runs the board as a live process: one Discord gateway connection and a
+small web server in the same loop. Discord **pushes** events, so nothing polls —
+a message lands, the affected thread is re-read, the board is recomputed, and
+every open browser updates over SSE, usually inside a second.
+
+```bash
+export DISCORD_BOT_TOKEN="..."
+export SCRIPTCHECK_ACCESS_TOKEN="$(python -c 'import secrets;print(secrets.token_urlsafe(24))')"
+python -m scriptcheck serve
+# board on http://0.0.0.0:8080/?k=<your token>
+```
+
+| Route | |
+| --- | --- |
+| `/` | the board, in live mode |
+| `/events` | SSE stream; the page reconnects with backoff on its own |
+| `/report.json` | current state as JSON |
+| `/healthz` | `200` when the gateway is connected and a sync has happened, `503` otherwise — point your host's health check here |
+
+### What updates instantly
+
+| Event | Effect |
+| --- | --- |
+| You post a Drive link | row flips to **Delivered**, with the margin against the deadline |
+| A new assignment thread appears | it shows up, and you get a ping |
+| The opening post is edited | the deadline is re-read — this is how a changed brief stops being stale |
+| A message is edited or deleted | that thread is re-evaluated |
+| Forum tags or the title change | re-read |
+| A deadline passes | **Overdue**, pushed to the page and to your webhook |
+
+Bursts are debounced (1.5s) so a flurry of messages causes one re-read, and a
+full resync runs every `resync_minutes` regardless — gateway events can be
+missed during a reconnect, and a board that is quietly wrong is worse than one
+that is briefly late.
+
+### Alerts before the deadline, not after
+
+This is the part a twice-daily cron cannot do. The daemon pings you at each
+`reminder_lead_hours` window (default 24h and 2h out), when something goes
+overdue, when a new script lands, when one is delivered, and when a deadline
+appears to move.
+
+Each alert fires **once** per assignment per deadline value. A restart is silent
+— anything already inside a window is treated as spent — and arriving inside
+several windows at once sends one message, not a burst. If a deadline is moved,
+the reminders re-arm for the new one.
+
+```json
+{
+  "reminder_lead_hours": [24, 2],
+  "alert_kinds": ["new_assignment", "due_in", "overdue", "delivered", "deadline_changed", "needs_review"],
+  "resync_minutes": 15
+}
+```
+
+Drop any kind from `alert_kinds` to stop hearing about it.
+
+### Where to run it
+
+A gateway connection has to stay open, so this needs somewhere always-on. It is
+a 256MB process that idles at almost nothing.
+
+| | |
+| --- | --- |
+| **Fly.io** | `fly.toml` is included and sets `auto_stop_machines = false` — the machine must not sleep or the connection drops. A few dollars a month at the smallest size. |
+| **A Raspberry Pi or any spare box** | `deploy/systemd-scriptcheck.service` is a ready unit file with `Restart=always`. Free, and the board stays on your own network. |
+| **Any VPS / Railway / Render paid tier** | `Dockerfile` included, health check wired to `/healthz`. |
+| **Render free tier, or anything that sleeps on idle** | won't work — a sleeping process is a disconnected bot. |
+
+**Lock it down.** Unlike the GitHub Pages build, this board is a live URL with
+client titles, deadlines and Drive links on it. Set `SCRIPTCHECK_ACCESS_TOKEN`
+and reach it at `/?k=<token>` — the token is then remembered in a cookie, and
+every other request without it returns `404` rather than `403`, so a stranger
+learns nothing. The daemon logs a warning at startup if no token is set.
+
+### Or keep the scheduled version
+
+`.github/workflows/publish.yml` still works and costs nothing to run. The two
+modes share all their logic, so you can start on the cron and move to `serve`
+later without changing anything else.
 
 ## Reminders
 
@@ -362,7 +446,12 @@ embedding in a host that supplies its own document shell.
 | `submission_link_patterns` | Drive + Docs | Regexes that make a link count as a delivery. |
 | `accept_any_author` | `false` | Count a link from anyone, not just you. |
 | `done_tags` / `ignore_tags` | see config | Forum tags treated as delivered / skipped. |
-| `webhook_url` | `""` | Where `notify` posts. |
+| `webhook_url` | `""` | Where `notify` and live alerts post. |
+| `access_token` | `""` | Shared secret for the live board; empty means open. |
+| `serve_host` / `serve_port` | `0.0.0.0` / `8080` | Where `serve` binds. |
+| `resync_minutes` | `15` | Safety-net full resync in live mode. |
+| `reminder_lead_hours` | `[24, 2]` | How far ahead of a deadline to ping. |
+| `alert_kinds` | all six | Which live alerts to send. |
 | `data_file` | `data/threads.json` | Default fetch/report path. |
 | `overrides_file` | `overrides.json` | Hand corrections that beat the parser. |
 
@@ -372,7 +461,7 @@ embedding in a host that supplies its own document shell.
 python -m unittest discover -s tests -t .
 ```
 
-89 tests cover title and deadline parsing (including the two-timezone briefs,
+125 tests cover title and deadline parsing (including the two-timezone briefs,
 Discord `<t:…>` timestamps, date-only deadlines and month-name dates), role-section
 assignment, link detection, every status transition, the report formats, and the
 dashboard's data embedding (including that a thread title cannot break out of the
@@ -380,4 +469,7 @@ embedded JSON), plus the accuracy machinery: confidence levels, deadline-change
 detection, edited-message ambiguity, fetch-cap reporting, unknown role discovery
 and the overrides file, plus every preflight rule (bad token, missing invite,
 unreadable channel, the message-content intent being off) against synthetic facts,
-so the diagnosis is verified without a live connection.
+so the diagnosis is verified without a live connection. The live daemon is covered
+too: alert timing and once-only firing against a moving clock, and the HTTP surface
+(auth gate, health, JSON, and a real SSE push reaching a connected client) driven
+through aiohttp's test server, with no Discord involved.

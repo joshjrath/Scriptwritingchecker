@@ -100,6 +100,13 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_serve(args) -> int:
+    from .live import serve
+
+    config = _load_config(args)
+    return serve(config, token=args.token, host=args.host, port=args.port)
+
+
 def cmd_doctor(args) -> int:
     from .doctor import collect, diagnose, render
 
@@ -272,6 +279,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit the page without the <html>/<body> wrapper, for embedding.",
     )
     dashboard.set_defaults(func=cmd_dashboard)
+
+    serve = sub.add_parser(
+        "serve",
+        help="Run the live board: gateway connection plus a web server.",
+    )
+    serve.add_argument("--token", help="Bot token (else $DISCORD_BOT_TOKEN).")
+    serve.add_argument("--host", default="", help="Bind address (default 0.0.0.0).")
+    serve.add_argument("--port", type=int, default=0, help="Port (else $PORT, else 8080).")
+    serve.add_argument("--timezone", help="Override the display timezone.")
+    serve.set_defaults(func=cmd_serve)
 
     doctor = sub.add_parser(
         "doctor", help="Check the bot can see everything it needs. Run this first."

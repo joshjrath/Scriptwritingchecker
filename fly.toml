@@ -1,0 +1,32 @@
+# fly.toml - `fly launch --no-deploy` then `fly deploy`.
+#
+# Secrets (never in this file):
+#   fly secrets set DISCORD_BOT_TOKEN=... SCRIPTCHECK_WEBHOOK_URL=... SCRIPTCHECK_MY_USER_ID=...
+app = "script-board"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # The gateway connection has to stay up, so the machine must not be
+  # stopped when nobody is looking at the board.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "40s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
