@@ -654,6 +654,26 @@
     padding: 3px 8px;
     white-space: nowrap;
   }
+  .markbtn {
+    appearance: none;
+    font: inherit;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: .04em;
+    cursor: pointer;
+    background: var(--glass-3);
+    color: var(--ink-2);
+    border: 1px solid var(--stroke-2);
+    border-radius: 999px;
+    padding: 4px 12px;
+    white-space: nowrap;
+    transition: border-color .12s ease, color .12s ease;
+  }
+  .markbtn:hover { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
+  .markbtn.undo:hover { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 55%, transparent); }
+  .markbtn[disabled] { opacity: .5; cursor: progress; }
+  .markbtn.failed { color: var(--critical); border-color: var(--critical); }
+  .card .markbtn { margin-top: 10px; }
   .pill.flag {
     --tone: var(--unknown);
     letter-spacing: .12em;
@@ -920,6 +940,45 @@
 
   var state = { filter: null, query: "", sort: "urgency" };
 
+  /* In drop-box mode the delivery happens in a server this board cannot see,
+     so there is nothing to detect - you say so here, once, and it sticks. */
+  function markedByHand(item) {
+    return (item.overridden || []).indexOf("delivered_at") !== -1;
+  }
+
+  function markButton(item) {
+    if (!DATA.live) return null;
+    var done = item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE";
+    if (done && !markedByHand(item)) return null;  // detected on its own
+
+    var undo = done;
+    var button = el("button", "markbtn" + (undo ? " undo" : ""), undo ? "undo" : "mark delivered");
+    button.type = "button";
+    button.addEventListener("click", function () {
+      button.disabled = true;
+      button.classList.remove("failed");
+      var original = button.textContent;
+      button.textContent = undo ? "undoing" : "saving";
+      fetch("mark", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ thread_id: item.thread_id, undo: undo })
+      })
+        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+        .then(function (result) {
+          if (!result.ok) throw new Error(result.body && result.body.error);
+          // The server pushes the new board; no need to re-render here.
+        })
+        .catch(function (err) {
+          button.disabled = false;
+          button.textContent = original;
+          button.classList.add("failed");
+          button.title = String(err && err.message ? err.message : err);
+        });
+    });
+    return button;
+  }
+
   function decorate(now) {
     ITEMS.forEach(function (item) { item.live = liveStatus(item, now); });
   }
@@ -1178,6 +1237,8 @@
       card.appendChild(top);
       card.appendChild(metaRow(item));
       (item.warnings || []).forEach(function (w) { card.appendChild(el("p", "warn", w)); });
+      var mark = markButton(item);
+      if (mark) card.appendChild(mark);
       host.appendChild(card);
     });
   }
@@ -1278,7 +1339,14 @@
       } else {
         delivered = el("span", "dash", "not yet");
       }
-      cell(tr, "Delivered", delivered);
+      var cellBody = el("span");
+      cellBody.appendChild(delivered);
+      var rowMark = markButton(item);
+      if (rowMark) {
+        cellBody.appendChild(document.createElement("br"));
+        cellBody.appendChild(rowMark);
+      }
+      cell(tr, "Delivered", cellBody);
 
       host.appendChild(tr);
     });

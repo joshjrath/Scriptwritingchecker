@@ -52,6 +52,56 @@ def load(path: str | Path) -> dict[str, dict]:
     return cleaned
 
 
+def save(path: str | Path, table: dict[str, dict]) -> Path:
+    """Write the overrides file, creating its directory if needed."""
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Write beside the target and swap, so a crash mid-write cannot leave a
+    # half-file that fails to parse and loses every correction.
+    temp = path.with_suffix(path.suffix + ".tmp")
+    temp.write_text(json.dumps(table, indent=2, sort_keys=True))
+    temp.replace(path)
+    return path
+
+
+def record_delivery(
+    path: str | Path,
+    thread_id: str,
+    posted_at: Optional[datetime] = None,
+    links: Optional[list] = None,
+    note: str = "",
+) -> dict:
+    """Mark one assignment delivered, by hand, and persist it."""
+
+    table = load(path)
+    entry = dict(table.get(str(thread_id)) or {})
+    entry["delivered_at"] = (posted_at or datetime.now(timezone.utc)).isoformat()
+    if links:
+        entry["links"] = [str(l) for l in links]
+    entry["note"] = note or "marked delivered from the board"
+    table[str(thread_id)] = entry
+    save(path, table)
+    return table
+
+
+def clear_delivery(path: str | Path, thread_id: str) -> dict:
+    """Undo a hand-marked delivery, leaving any other corrections alone."""
+
+    table = load(path)
+    entry = dict(table.get(str(thread_id)) or {})
+    for key in ("delivered_at", "links"):
+        entry.pop(key, None)
+    if entry.get("note", "").startswith("marked delivered"):
+        entry.pop("note", None)
+    if entry:
+        table[str(thread_id)] = entry
+    else:
+        table.pop(str(thread_id), None)
+    save(path, table)
+    return table
+
+
 def apply(assignment: Assignment, entry: dict) -> Assignment:
     """Apply one override entry in place; record what it touched."""
 

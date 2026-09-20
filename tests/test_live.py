@@ -250,3 +250,103 @@ class TestDiagnosticRoutes(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await client.get("/audit?k=s3cret")).status, 200)
         finally:
             await client.close()
+
+
+class TestMarkDelivered(unittest.IsolatedAsyncioTestCase):
+    """Drop-box mode delivers where the bot cannot see, so you say so here."""
+
+    async def asyncSetUp(self):
+        import tempfile
+
+        self.overrides = Path(tempfile.mkdtemp()) / "overrides.json"
+        config = Config(
+            my_user_ids=["111111111111111111"],
+            my_roles=["SCRIPT"],
+            display_timezone="America/New_York",
+            overrides_file=str(self.overrides),
+        )
+        self.board = LiveBoard(config, token="x", host="127.0.0.1", port=0)
+        self.board.state.replace_all(load_threads(FIXTURE))
+        self.client = TestClient(TestServer(self.board.build_app()))
+        await self.client.start_server()
+
+    async def asyncTearDown(self):
+        await self.client.close()
+
+    def status_of(self, thread_id):
+        return self.board.state.by_id(NOW)[thread_id].status
+
+    async def test_marking_flips_the_status_and_persists(self):
+        self.assertEqual(self.status_of("1003"), Status.OVERDUE)
+
+        response = await self.client.post("/mark", json={"thread_id": "1003"})
+        self.assertEqual(response.status, 200)
+        self.assertTrue((await response.json())["ok"])
+
+        self.assertTrue(self.board.state.by_id(NOW)["1003"].status.is_submitted)
+        # Written to disk, so a restart keeps it.
+        self.assertIn("1003", json.loads(self.overrides.read_text()))
+
+    async def test_a_link_can_be_recorded_with_it(self):
+        await self.client.post(
+            "/mark", json={"thread_id": "1003", "link": "https://drive.google.com/x"}
+        )
+        assignment = self.board.state.by_id(NOW)["1003"]
+        self.assertEqual(assignment.submissions[0].links, ["https://drive.google.com/x"])
+
+    async def test_undo_puts_it_back(self):
+        await self.client.post("/mark", json={"thread_id": "1003"})
+        self.assertTrue(self.board.state.by_id(NOW)["1003"].status.is_submitted)
+
+        response = await self.client.post("/mark", json={"thread_id": "1003", "undo": True})
+        self.assertEqual(response.status, 200)
+        self.assertEqual(self.status_of("1003"), Status.OVERDUE)
+        self.assertEqual(json.loads(self.overrides.read_text()), {})
+
+    async def test_marking_is_visible_as_a_hand_correction(self):
+        await self.client.post("/mark", json={"thread_id": "1003"})
+        assignment = self.board.state.by_id(NOW)["1003"]
+        self.assertIn("delivered_at", assignment.overridden)
+        self.assertTrue(any("Corrected by hand" in w for w in assignment.warnings))
+
+    async def test_an_unknown_thread_is_refused(self):
+        response = await self.client.post("/mark", json={"thread_id": "does-not-exist"})
+        self.assertEqual(response.status, 404)
+
+    async def test_a_missing_thread_id_is_refused(self):
+        self.assertEqual((await self.client.post("/mark", json={})).status, 400)
+
+    async def test_junk_is_refused(self):
+        response = await self.client.post(
+            "/mark", data=b"not json", headers={"Content-Type": "application/json"}
+        )
+        self.assertEqual(response.status, 400)
+
+    async def test_an_unwritable_path_explains_itself(self):
+        self.board.config.overrides_file = "/proc/cannot/write/here.json"
+        response = await self.client.post("/mark", json={"thread_id": "1003"})
+        self.assertEqual(response.status, 500)
+        self.assertIn("volume", (await response.json())["error"])
+
+    async def test_marking_pushes_the_new_board_to_open_clients(self):
+        stream = await self.client.get("/events")
+        await asyncio.wait_for(stream.content.readuntil(b"\n\n"), timeout=5)
+
+        await self.client.post("/mark", json={"thread_id": "1003"})
+
+        chunk = await asyncio.wait_for(stream.content.readuntil(b"\n\n"), timeout=5)
+        payload = json.loads(chunk.decode().split("data: ", 1)[1].strip())
+        row = [a for a in payload["assignments"] if a["thread_id"] == "1003"][0]
+        self.assertIn("delivered_at", row["overridden"])
+        stream.close()
+
+    async def test_marking_needs_the_access_token_too(self):
+        config = Config(access_token="s3cret", overrides_file=str(self.overrides))
+        board = LiveBoard(config, token="x", host="127.0.0.1", port=0)
+        board.state.replace_all(load_threads(FIXTURE))
+        client = TestClient(TestServer(board.build_app()))
+        await client.start_server()
+        try:
+            self.assertEqual((await client.post("/mark", json={"thread_id": "1003"})).status, 404)
+        finally:
+            await client.close()

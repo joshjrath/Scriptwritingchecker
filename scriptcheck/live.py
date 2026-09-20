@@ -18,6 +18,7 @@ from typing import Optional
 
 from .alerts import AlertTracker, format_digest
 from .audit import render_audit, render_explain
+from .overrides import clear_delivery, record_delivery
 from .config import Config
 from .dashboard import render_dashboard
 from .models import Attachment, Author, Message, Thread
@@ -316,6 +317,50 @@ class LiveBoard:
             body += f"\n\n({len(matches) - 5} more matched; narrow the search.)"
         return self.web.Response(text=body, content_type="text/plain", charset="utf-8")
 
+    async def handle_mark(self, request):
+        """Mark an assignment delivered from the board, or undo it.
+
+        The delivery itself happens in a server this bot cannot see, so in
+        drop-box mode there is nothing to detect - you say so once, here, and
+        it is written to the overrides file where it survives a restart.
+        """
+
+        try:
+            body = await request.json()
+        except Exception:
+            return self.web.json_response({"error": "expected JSON"}, status=400)
+
+        thread_id = str(body.get("thread_id") or "").strip()
+        if not thread_id:
+            return self.web.json_response({"error": "thread_id is required"}, status=400)
+        if not self.state.knows(thread_id):
+            return self.web.json_response({"error": "unknown thread"}, status=404)
+
+        undo = bool(body.get("undo"))
+        link = str(body.get("link") or "").strip()
+        try:
+            if undo:
+                clear_delivery(self.config.overrides_file, thread_id)
+            else:
+                record_delivery(
+                    self.config.overrides_file,
+                    thread_id,
+                    links=[link] if link else None,
+                )
+        except OSError as exc:
+            log.exception("could not write overrides")
+            return self.web.json_response(
+                {
+                    "error": f"could not save: {exc}. The board needs a writable "
+                    "path for overrides_file - on Railway that means a volume."
+                },
+                status=500,
+            )
+
+        self.state.reload_overrides()
+        await self.publish()
+        return self.web.json_response({"ok": True, "thread_id": thread_id, "undo": undo})
+
     async def handle_health(self, request):
         ready = bool(self.client and self.client.is_ready())
         body = {
@@ -393,6 +438,7 @@ class LiveBoard:
         app = self.web.Application(middlewares=[self._auth_middleware()])
         app.router.add_get("/", self.handle_index)
         app.router.add_get("/report.json", self.handle_report)
+        app.router.add_post("/mark", self.handle_mark)
         app.router.add_get("/audit", self.handle_audit)
         app.router.add_get("/explain", self.handle_explain)
         app.router.add_get("/events", self.handle_events)
@@ -477,6 +523,42 @@ class LiveBoard:
             await runner.cleanup()
 
 
+def _warn_if_overrides_are_not_durable(config: Config) -> None:
+    """Marking something delivered has to survive a redeploy.
+
+    On Railway, Fly and friends the container filesystem is thrown away on
+    every deploy, so a writable path is not the same as a durable one. Better
+    to say so at boot than to lose the first month of corrections silently.
+    """
+
+    from pathlib import Path
+
+    log_ = logging.getLogger("scriptcheck.live")
+    path = Path(config.overrides_file)
+    directory = path.parent if str(path.parent) else Path(".")
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        probe = directory / ".scriptcheck-write-test"
+        probe.write_text("ok")
+        probe.unlink()
+    except OSError as exc:
+        log_.error(
+            "Cannot write %s (%s). Marking assignments delivered from the board "
+            "will fail until this path is writable.",
+            path,
+            exc,
+        )
+        return
+
+    if not str(path.resolve()).startswith(("/data", "/mnt", "/var/lib")):
+        log_.warning(
+            "overrides at %s are on the container filesystem, which most hosts "
+            "wipe on redeploy. Mount a volume and set overrides_file to a path "
+            "on it (e.g. /data/overrides.json) to keep hand corrections.",
+            path,
+        )
+
+
 def serve(config: Config, token: Optional[str] = None, host: str = "", port: int = 0) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s"
@@ -494,6 +576,7 @@ def serve(config: Config, token: Optional[str] = None, host: str = "", port: int
             "the server will be read. Set channel_name_patterns (e.g. "
             '["assignments", "workflow"]) to keep this fast and quiet.'
         )
+    _warn_if_overrides_are_not_durable(config)
     board = LiveBoard(
         config,
         token,

@@ -252,6 +252,26 @@ blank, which is the one thing that would quietly break this whole path.
 
 Pasting a brief in as text works identically, if forwarding ever mangles one.
 
+### Marking things delivered
+
+The delivery itself happens in *their* server, where this bot cannot see — so in
+drop-box mode there is nothing to detect. The board carries a **mark delivered**
+button on every open assignment instead: one tap, and it flips with the margin
+against the deadline. **undo** puts it back.
+
+That writes to `overrides.json`, the same file that holds every other hand
+correction, so it shows up as `Corrected by hand`, survives restarts, and is
+never silently reverted by a later parse.
+
+**On a hosted container, point it at a volume.** Railway, Fly and Render throw
+the filesystem away on every deploy, so an ordinary path is writable but not
+durable. Mount a volume at `/data` and set `"overrides_file": "/data/overrides.json"`
+in `SCRIPTCHECK_CONFIG`. The daemon warns at startup if the path looks
+ephemeral, and the button reports the problem rather than failing quietly.
+
+If you would rather not tap anything: forward your own delivery message into the
+thread the same way you forwarded the brief, and it is detected normally.
+
 ## Real time
 
 `serve` runs the board as a live process: one Discord gateway connection and a
@@ -272,6 +292,7 @@ python -m scriptcheck serve
 | `/events` | SSE stream; the page reconnects with backoff on its own |
 | `/report.json` | current state as JSON |
 | `/healthz` | `200` when the gateway is connected and a sync has happened, `503` otherwise — point your host's health check here |
+| `POST /mark` | mark an assignment delivered by hand, or undo it |
 | `/audit` | the parse audit as plain text |
 | `/explain?q=Sans` | full parse trace for one thread; `/explain` alone lists them |
 
@@ -544,7 +565,7 @@ embedding in a host that supplies its own document shell.
 python -m unittest discover -s tests -t .
 ```
 
-157 tests cover title and deadline parsing (including the two-timezone briefs,
+167 tests cover title and deadline parsing (including the two-timezone briefs,
 Discord `<t:…>` timestamps, date-only deadlines and month-name dates), role-section
 assignment, link detection, every status transition, the report formats, and the
 dashboard's data embedding (including that a thread title cannot break out of the
