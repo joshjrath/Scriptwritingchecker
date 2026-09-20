@@ -9,6 +9,7 @@
   "my_roles": [
     "SCRIPT"
   ],
+  "guild_ids": [],
   "channel_name_patterns": [
     "assignments",
     "workflow"
@@ -19,5 +20,24 @@
   ],
   "display_timezone": "America/New_York",
   "due_soon_hours": 48,
-  "data_file": "data/threads.json"
+  "submission_link_patterns": [
+    "drive\\.google\\.com",
+    "docs\\.google\\.com"
+  ],
+  "data_file": "data/threads.json",
+  "overrides_file": "overrides.json",
+  "reminder_lead_hours": [
+    24,
+    2
+  ],
+  "alert_kinds": [
+    "new_assignment",
+    "due_in",
+    "overdue",
+    "delivered",
+    "deadline_changed",
+    "needs_review"
+  ],
+  "resync_minutes": 15,
+  "serve_port": 8080
 }

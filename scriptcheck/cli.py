@@ -42,17 +42,47 @@ def cmd_init(args) -> int:
         print(f"{path} already exists (use --force to overwrite).")
         return 1
     sample = {
-        "my_user_ids": ["YOUR_DISCORD_USER_ID"],
-        "my_names": ["Josh"],
-        "my_roles": ["SCRIPT"],
+        "my_user_ids": [
+                "YOUR_DISCORD_USER_ID"
+        ],
+        "my_names": [
+                "Josh",
+                "joshjrath"
+        ],
+        "my_roles": [
+                "SCRIPT"
+        ],
         "guild_ids": [],
-        "channel_name_patterns": ["assignments", "workflow"],
+        "channel_name_patterns": [
+                "assignments",
+                "workflow"
+        ],
         "default_timezone": "America/New_York",
-        "preferred_timezones": ["America/New_York"],
+        "preferred_timezones": [
+                "America/New_York"
+        ],
         "display_timezone": "America/New_York",
         "due_soon_hours": 48,
-        "submission_link_patterns": ["drive\\.google\\.com", "docs\\.google\\.com"],
+        "submission_link_patterns": [
+                "drive\\.google\\.com",
+                "docs\\.google\\.com"
+        ],
         "data_file": "data/threads.json",
+        "overrides_file": "overrides.json",
+        "reminder_lead_hours": [
+                24,
+                2
+        ],
+        "alert_kinds": [
+                "new_assignment",
+                "due_in",
+                "overdue",
+                "delivered",
+                "deadline_changed",
+                "needs_review"
+        ],
+        "resync_minutes": 15,
+        "serve_port": 8080
     }
     path.write_text(json.dumps(sample, indent=2) + "\n")
     print(f"Wrote {path}. Fill in your Discord user ID, then run `scriptcheck fetch`.")

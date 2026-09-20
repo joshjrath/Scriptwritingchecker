@@ -146,7 +146,12 @@ permission, thread reachability, whether sampled messages actually carry text
 threads. Every failure comes with the specific fix. When it says *"Everything
 checks out"*, the unattended pipeline will work.
 
-**5. Let it run itself.** Add three repository secrets — `DISCORD_BOT_TOKEN`,
+**5. Point it at your server.** `python -m scriptcheck init` writes a config;
+set `my_user_ids` to your own ID and check `channel_name_patterns` matches the
+assignment channel's name. `.env.example` lists the four environment variables
+and where each one comes from.
+
+**6. Let it run itself.** Add three repository secrets — `DISCORD_BOT_TOKEN`,
 `SCRIPTCHECK_MY_USER_ID`, `SCRIPTCHECK_WEBHOOK_URL` — and enable Pages
 (*Settings -> Pages -> Source: GitHub Actions*). After that the workflow
 preflights, fetches, audits, publishes the board, and pings you twice a day.
