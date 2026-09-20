@@ -11,7 +11,7 @@ from typing import Iterable, Optional
 from zoneinfo import ZoneInfo
 
 from .config import Config
-from .models import STATUS_EMOJI, STATUS_LABEL, Assignment, Status
+from .models import STATUS_EMOJI, STATUS_LABEL, Assignment, Confidence, Status
 
 
 def _local(dt: Optional[datetime], tz: str) -> str:
@@ -91,6 +91,12 @@ def render_text(
         if counts[s]
     )
     out.append(tally or "Nothing to report.")
+    review = sum(1 for a in assignments if a.needs_review)
+    if review:
+        out.append(
+            f"{review} of {len(assignments)} need a human look - "
+            "run `scriptcheck audit` for why."
+        )
     out.append("")
 
     current: Optional[Status] = None
@@ -128,8 +134,10 @@ def render_text(
                 out.append(f"   (+{len(item.submissions) - 1} later link post(s))")
         elif item.status.needs_action:
             out.append("   Delivered: NO DRIVE LINK FROM ME IN THIS THREAD")
+        if item.confidence is not Confidence.HIGH:
+            out.append(f"   Confidence: {item.confidence.value}")
         for warning in item.warnings:
-            out.append(f"   ! {warning}")
+            out.append(f"   ! {warning.lstrip('! ')}")
         if item.jump_url:
             out.append(f"   {item.jump_url}")
     out.append("")
@@ -184,7 +192,7 @@ def render_markdown(
         name = f"[{item.thread_name}]({item.jump_url})" if item.jump_url else item.thread_name
         lines.append(f"{STATUS_EMOJI[item.status]} {name} - " + "; ".join(bits))
         for warning in item.warnings:
-            lines.append(f"   - _{warning}_")
+            lines.append(f"   - _{warning.lstrip('! ')}_")
     lines.append("")
     return "\n".join(lines)
 
@@ -210,9 +218,9 @@ def render_csv(
     writer = csv.writer(buffer)
     writer.writerow(
         [
-            "status", "thread", "slot", "channel", "role", "deadline_utc",
-            "deadline_local", "word_count", "delivered_utc", "links",
-            "warnings", "url",
+            "status", "confidence", "needs_review", "thread", "slot", "channel",
+            "role", "deadline_utc", "deadline_local", "deadline_raw", "word_count",
+            "delivered_utc", "links", "warnings", "url",
         ]
     )
     for a in assignments:
@@ -220,12 +228,15 @@ def render_csv(
         writer.writerow(
             [
                 a.status.value,
+                a.confidence.value,
+                "yes" if a.needs_review else "",
                 a.thread_name,
                 a.slot,
                 a.channel,
                 a.role,
                 a.deadline.isoformat() if a.deadline else "",
                 _local(a.deadline, config.display_timezone) if a.deadline else "",
+                a.deadline_raw,
                 a.word_count or "",
                 first.posted_at.isoformat() if first and first.posted_at else "",
                 " ".join(first.links) if first else "",

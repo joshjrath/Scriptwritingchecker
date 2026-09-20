@@ -641,6 +641,12 @@
     padding: 3px 8px;
     white-space: nowrap;
   }
+  .pill.flag {
+    --tone: var(--unknown);
+    letter-spacing: .12em;
+    margin-left: 6px;
+    cursor: help;
+  }
   .link { color: var(--accent); text-decoration: none; font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
   .link:hover { text-decoration: underline; }
   .dash { color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
@@ -873,6 +879,17 @@
   }
 
   function titleOf(item) { return item.title || item.thread_name; }
+
+  /* A row the parser is not sure about says so, rather than looking as
+     confident as one it read cleanly. */
+  function reviewBadge(item) {
+    if (!item.needs_review) return null;
+    var flag = el("span", "pill flag", "check");
+    var why = (item.warnings || []).map(function (w) { return w.replace(/^!\s*/, ""); });
+    if (item.confidence && item.confidence !== "HIGH") why.unshift("confidence: " + item.confidence.toLowerCase());
+    flag.title = why.join("\n") || "Worth a manual look.";
+    return flag;
+  }
 
   function linkedTitle(item, tag) {
     var host = el(tag || "span");
@@ -1135,6 +1152,8 @@
       var pill = el("span", "pill", META[item.live].label);
       pill.style.setProperty("--tone", META[item.live].tone);
       head.appendChild(pill);
+      var flag = reviewBadge(item);
+      if (flag) head.appendChild(flag);
       top.appendChild(head);
 
       var c = countdown(item, now);
@@ -1152,6 +1171,7 @@
 
   function matchesFilter(item) {
     if (!state.filter) return true;
+    if (state.filter === "REVIEW") return !!item.needs_review;
     if (state.filter === "DELIVERED") return item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE";
     return item.live === state.filter;
   }
@@ -1209,7 +1229,11 @@
 
       var pill = el("span", "pill", META[item.live].label);
       pill.style.setProperty("--tone", META[item.live].tone);
-      cell(tr, "Status", pill);
+      var status = el("span");
+      status.appendChild(pill);
+      var flag = reviewBadge(item);
+      if (flag) status.appendChild(flag);
+      cell(tr, "Status", status);
 
       var name = linkedTitle(item, "div");
       name.className = "t-name";
@@ -1266,6 +1290,18 @@
       });
       host.appendChild(chip);
     });
+
+    var flagged = ITEMS.filter(function (i) { return i.needs_review; }).length;
+    if (flagged) {
+      var review = el("button", "chip", "Needs check (" + flagged + ")");
+      review.type = "button";
+      review.setAttribute("aria-pressed", state.filter === "REVIEW" ? "true" : "false");
+      review.addEventListener("click", function () {
+        state.filter = state.filter === "REVIEW" ? null : "REVIEW";
+        render();
+      });
+      host.appendChild(review);
+    }
   }
 
   function renderHeader(now) {

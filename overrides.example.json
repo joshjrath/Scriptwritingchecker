@@ -1,0 +1,13 @@
+{
+  "_comment": "Delete this key. Each entry is keyed by Discord thread ID; see the Accuracy section of the README.",
+  "1412000000000000000": {
+    "deadline": "2026-09-25T23:59:00-04:00",
+    "note": "Ash extended it in the thread on the 21st"
+  },
+  "1398000000000000000": {
+    "delivered_at": "2026-09-19T20:00:00-04:00",
+    "links": ["https://drive.google.com/file/d/REPLACE/view"],
+    "note": "sent by DM, not in the thread"
+  },
+  "1377000000000000000": { "ignore": true, "note": "cancelled" }
+}

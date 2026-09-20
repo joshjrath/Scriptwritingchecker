@@ -66,6 +66,8 @@ class Config:
     # --- output -------------------------------------------------------------
     webhook_url: str = ""
     data_file: str = "data/threads.json"
+    #: Hand corrections that beat the parser, keyed by thread ID.
+    overrides_file: str = "overrides.json"
 
     @property
     def assume_time_obj(self) -> time:

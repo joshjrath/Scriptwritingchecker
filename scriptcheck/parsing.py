@@ -572,3 +572,88 @@ def find_links(text: str, patterns: Iterable[str] = DEFAULT_LINK_PATTERNS) -> li
         if any(c.search(url) for c in compiled) and url not in hits:
             hits.append(url)
     return hits
+
+
+# ---------------------------------------------------------------------------
+# Deadline changes negotiated in the thread
+# ---------------------------------------------------------------------------
+
+#: Phrases that mean a schedule change on their own.
+RE_CHANGE_STRONG = re.compile(
+    r"\b(?:new\s+deadline|deadline\s+(?:is\s+now|changed|moved|pushed|extended)|"
+    r"exten(?:d|ded|ding|sion)|resched\w*|more\s+time|"
+    r"(?:take|taking|have|had|giving\s+you|give\s+you)\s+(?:an?\s+|a\s+few\s+)?"
+    r"(?:extra|another|couple\s+(?:more\s+)?(?:of\s+)?)?\s*(?:day|days|hours?|week))\b",
+    re.IGNORECASE,
+)
+
+#: Phrases that only mean a schedule change next to a date or a weekday.
+RE_CHANGE_WEAK = re.compile(
+    r"\b(?:mov(?:e|ed|ing)|push(?:ed|ing)?|bump(?:ed|ing)?|slip(?:ped|ping)?)\s+"
+    r"(?:it|this|that|the\s+deadline|things)?\s*(?:back|to|up|until|till)\b",
+    re.IGNORECASE,
+)
+
+RE_WEEKDAY = re.compile(
+    r"\b(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)(?:day)?\b", re.IGNORECASE
+)
+
+RE_DEADLINE_WORD = re.compile(r"\b(?:deadline|due|extension)\b", re.IGNORECASE)
+
+#: "9/25" - too loose for deadline parsing, but fine as corroboration here.
+RE_SHORT_DATE = re.compile(r"(?<!\d)\d{1,2}[/-]\d{1,2}(?!\d)")
+
+
+def looks_like_deadline_change(text: str) -> bool:
+    """Does this message read like the deadline was renegotiated?
+
+    Deliberately advisory: the brief stays the source of truth and this only
+    raises a flag, because acting on a guess about a schedule change would be
+    worse than telling someone to go read the thread.
+    """
+
+    text = text or ""
+    if RE_CHANGE_STRONG.search(text):
+        return True
+    if not RE_CHANGE_WEAK.search(text):
+        return False
+    return bool(
+        RE_WEEKDAY.search(text)
+        or RE_DEADLINE_WORD.search(text)
+        or RE_SHORT_DATE.search(text)
+        or extract_datetimes(text)
+    )
+
+
+#: A shouted word or two, the way a role header is written.
+RE_CAPS_TOKEN = re.compile(r"(?<![A-Za-z])([A-Z][A-Z]{2,}(?:\s+[A-Z]{2,}){0,2})(?![a-z])")
+
+
+def discover_role_headers(body: str) -> list[str]:
+    """Header-shaped lines in a post, whatever they are called.
+
+    `split_role_sections` can only find roles it was told about, so it can
+    never reveal a brief that says WRITER where the config says SCRIPT. This
+    looks for the shape instead - a shouted label on a short line that also
+    names somebody - so an unknown role shows up in the audit rather than
+    silently dropping the assignment.
+    """
+
+    found: list[str] = []
+    for line in (body or "").splitlines():
+        stripped = line.strip()
+        if not stripped or len(stripped) > 80:
+            continue
+        if re.match(r"^\s*[\u2022\u25e6\u25aa]", line):
+            continue
+        ids, names = mentions(stripped)
+        if not ids and not names:
+            continue
+        for match in RE_CAPS_TOKEN.finditer(RE_USER_MENTION.sub(" ", stripped)):
+            token = re.sub(r"\s+", " ", match.group(1).strip())
+            # "@ UTDR" is a mention, not a role: skip a shout that IS the name.
+            if any(token.lower() == n.strip().lower() for n in names):
+                continue
+            if token not in found:
+                found.append(token)
+    return found

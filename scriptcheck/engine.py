@@ -6,13 +6,23 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional
 
 from .config import Config
-from .models import Assignment, Message, Status, Submission, Thread, sort_assignments
+from . import overrides as overrides_mod
+from .models import (
+    Assignment,
+    Confidence,
+    Message,
+    Status,
+    Submission,
+    Thread,
+    sort_assignments,
+)
 from .parsing import (
     RoleSection,
     choose_deadline,
     deadline_text,
     extract_datetimes,
     find_links,
+    looks_like_deadline_change,
     mentions,
     parse_thread_title,
     parse_word_count,
@@ -50,6 +60,11 @@ def _section_is_mine(section: RoleSection, config: Config) -> Optional[bool]:
     return None  # nobody named at all
 
 
+def _matched_by_id(section: RoleSection, config: Config) -> bool:
+    my_ids = {str(u) for u in config.my_user_ids}
+    return bool(my_ids and set(map(str, section.mention_ids)) & my_ids)
+
+
 def _pick_section(sections: list[RoleSection], config: Config) -> tuple[Optional[RoleSection], Optional[bool]]:
     """Choose the section for one of my roles; report whether it is mine."""
 
@@ -64,6 +79,13 @@ def _pick_section(sections: list[RoleSection], config: Config) -> tuple[Optional
         if _section_is_mine(section, config) is None:
             return section, None
     return candidates[0], False
+
+
+def _lower(assignment: Assignment, level: Confidence) -> None:
+    """Confidence only ever moves down."""
+
+    if level.rank > assignment.confidence.rank:
+        assignment.confidence = level
 
 
 def _without_title_line(body: str, thread_name: str) -> str:
@@ -105,8 +127,34 @@ def build_assignment(thread: Thread, config: Config, now: Optional[datetime] = N
         )
     scope_text = section.text if section is not None else _without_title_line(body, thread.name)
 
+    if section is not None and mine is True:
+        assignment.evidence["assignee"] = (
+            "user ID in the " + section.role + " section"
+            if _matched_by_id(section, config)
+            else "display name in the " + section.role + " section"
+        )
+        if not _matched_by_id(section, config):
+            _lower(assignment, Confidence.MEDIUM)
+    elif section is not None:
+        assignment.evidence["assignee"] = "unresolved - " + (
+            section.header.strip() or "no mention in the section header"
+        )
+        _lower(assignment, Confidence.MEDIUM)
+
+    same_role = [s for s in sections if s.role == (section.role if section else None)]
+    if len(same_role) > 1:
+        assignment.warnings.append(
+            f"! The opening post has {len(same_role)} {section.role} sections; "
+            "the first one naming me was used."
+        )
+        _lower(assignment, Confidence.LOW)
+
     # --- deadline -----------------------------------------------------------
-    focus = deadline_text(scope_text) or (scope_text if section is not None else "")
+    labelled = deadline_text(scope_text)
+    focus = labelled or (scope_text if section is not None else "")
+    if section is None and body:
+        # No role section at all: fall back to the whole post, but say so.
+        focus = focus or _without_title_line(body, thread.name)
     candidates = extract_datetimes(
         focus,
         default_tz=config.default_timezone,
@@ -118,6 +166,34 @@ def build_assignment(thread: Thread, config: Config, now: Optional[datetime] = N
         assignment.deadline = chosen.dt
         assignment.deadline_raw = chosen.raw
         assignment.deadline_tz = chosen.tz_label or chosen.zone
+        assignment.evidence["deadline"] = chosen.raw
+        assignment.evidence["deadline_source"] = (
+            f"the {section.role} section" if section is not None else "the whole post"
+        )
+        if section is None:
+            assignment.warnings.append(
+                "! Deadline was read from the whole post, not from a role section "
+                "assigned to me."
+            )
+            _lower(assignment, Confidence.LOW)
+        elif not labelled:
+            assignment.warnings.append(
+                "No line labelled 'Deadline' in my section; the date was taken from "
+                "the section text."
+            )
+            _lower(assignment, Confidence.MEDIUM)
+        if not chosen.tz_label:
+            assignment.warnings.append(
+                f"Deadline '{chosen.raw}' names no timezone; "
+                f"{config.default_timezone} was assumed."
+            )
+            _lower(assignment, Confidence.MEDIUM)
+        if not chosen.had_time:
+            assignment.warnings.append(
+                f"Deadline '{chosen.raw}' gives no time of day; "
+                f"{config.assume_time} was assumed."
+            )
+            _lower(assignment, Confidence.MEDIUM)
         others = {c.dt.replace(second=0, microsecond=0) for c in candidates}
         if len(others) > 1:
             assignment.warnings.append(
@@ -125,12 +201,29 @@ def build_assignment(thread: Thread, config: Config, now: Optional[datetime] = N
                 + "; ".join(sorted({c.raw for c in candidates}))
             )
 
+    if not chosen and section is not None:
+        snippet = " ".join((labelled or scope_text).split())[:120]
+        assignment.warnings.append(
+            f"! No date could be read from my {section.role} section"
+            + (f': "{snippet}"' if snippet else ".")
+        )
+
     assignment.word_count = parse_word_count(scope_text)
+    if assignment.word_count:
+        assignment.evidence["word_count"] = str(assignment.word_count)
 
     # --- submissions --------------------------------------------------------
+    edited_flags: list[str] = []
+    change_talk: list[Message] = []
     for message in thread.messages:
         if opening is not None and message.id and message.id == opening.id:
             continue
+        if (
+            not message.author.bot
+            and not _is_me(message, config)
+            and looks_like_deadline_change(message.content)
+        ):
+            change_talk.append(message)
         if not config.accept_any_author and not _is_me(message, config):
             continue
         links = find_links(message.content, config.submission_link_patterns)
@@ -145,6 +238,16 @@ def build_assignment(thread: Thread, config: Config, now: Optional[datetime] = N
                     jump_url=message.jump_url,
                 )
             )
+            # A link can be edited into an old message. Discord does not say
+            # when the link itself appeared, only when the message was last
+            # touched, so flag it when that ambiguity spans the deadline.
+            if (
+                message.edited_at
+                and assignment.deadline
+                and message.created_at
+                and message.created_at <= assignment.deadline < message.edited_at
+            ):
+                edited_flags.append(message.id)
     assignment.submissions.sort(key=lambda s: s.posted_at or datetime.max.replace(tzinfo=timezone.utc))
 
     first = assignment.first_submission
@@ -157,6 +260,28 @@ def build_assignment(thread: Thread, config: Config, now: Optional[datetime] = N
             and not _is_me(m, config)
             and not m.author.bot
         )
+
+    if edited_flags:
+        assignment.warnings.append(
+            "! My delivery message was edited after the deadline, so the posted time "
+            "may not be when the link actually went up."
+        )
+        _lower(assignment, Confidence.LOW)
+
+    for message in change_talk:
+        snippet = " ".join(message.content.split())[:140]
+        assignment.warnings.append(
+            f'! Someone may have changed the deadline in the thread: "{snippet}" '
+            "- the brief above is still what is being tracked."
+        )
+        _lower(assignment, Confidence.LOW)
+
+    if len(thread.messages) >= config.max_messages_per_thread:
+        assignment.warnings.append(
+            f"! Thread hit the {config.max_messages_per_thread}-message fetch cap; "
+            "later messages were not read."
+        )
+        _lower(assignment, Confidence.LOW)
 
     # Having delivered into a thread outranks a mention we read as someone
     # else's: a link of mine in it makes it mine.
@@ -226,9 +351,26 @@ def build_assignments(
     config: Config,
     now: Optional[datetime] = None,
     include_all: bool = False,
+    overrides: Optional[dict] = None,
 ) -> list[Assignment]:
     now = now or datetime.now(timezone.utc)
-    items = [build_assignment(t, config, now) for t in threads]
+    table = overrides if overrides is not None else overrides_mod.load(config.overrides_file)
+
+    items = []
+    for thread in threads:
+        assignment = build_assignment(thread, config, now)
+        entry = table.get(str(thread.id))
+        if entry:
+            overrides_mod.apply(assignment, entry)
+            # A corrected deadline or delivery has to re-decide the verdict,
+            # unless the override set the verdict itself.
+            if (
+                ("deadline" in entry or "delivered_at" in entry)
+                and "status" not in entry
+                and not entry.get("ignore")
+            ):
+                assignment.status = _status_for(assignment, True, config, now)
+        items.append(assignment)
     if not include_all:
         items = [a for a in items if a.status not in (Status.NOT_MINE, Status.IGNORED)]
     return sort_assignments(items)

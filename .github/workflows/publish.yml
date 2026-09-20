@@ -43,6 +43,13 @@ jobs:
           SCRIPTCHECK_MY_USER_ID: ${{ secrets.SCRIPTCHECK_MY_USER_ID }}
         run: python -m scriptcheck report -i data/threads.json
 
+      # Not a gate - a record. If parse coverage starts slipping because the
+      # brief format changed, it shows up here before the board goes wrong.
+      - name: Audit what was read vs assumed
+        env:
+          SCRIPTCHECK_MY_USER_ID: ${{ secrets.SCRIPTCHECK_MY_USER_ID }}
+        run: python -m scriptcheck audit -i data/threads.json
+
       # --redact-links keeps delivery times but strips Drive URLs and thread
       # links. Drop the flag only if the Pages site is private.
       - name: Build the dashboard

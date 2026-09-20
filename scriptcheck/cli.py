@@ -11,10 +11,12 @@ from typing import Optional
 
 from . import __version__
 from .config import Config
+from .audit import render_audit, render_explain
 from .dashboard import render_dashboard
 from .engine import build_assignments
 from .models import Status
 from .report import render
+from .overrides import load as load_overrides
 from .sources.export_json import load_threads, save_threads
 
 
@@ -94,6 +96,37 @@ def cmd_report(args) -> int:
         a.status in (Status.OVERDUE, Status.SUBMITTED_LATE) for a in items
     ):
         return 2
+    return 0
+
+
+def cmd_audit(args) -> int:
+    config = _load_config(args)
+    threads = load_threads(args.input or config.data_file)
+    now = _parse_now(args.now)
+    items = build_assignments(threads, config, now=now, include_all=args.all)
+    print(render_audit(threads, items, config, now))
+    if args.fail_on_review and any(a.needs_review for a in items):
+        return 2
+    return 0
+
+
+def cmd_explain(args) -> int:
+    config = _load_config(args)
+    threads = load_threads(args.input or config.data_file)
+    needle = args.thread.strip().lower()
+    matches = [
+        t for t in threads
+        if t.id == args.thread.strip() or needle in t.name.lower()
+    ]
+    if not matches:
+        names = "\n  ".join(t.name for t in threads[:15])
+        raise ValueError(f"No thread matches {args.thread!r}. Threads found:\n  {names}")
+    now = _parse_now(args.now)
+    for thread in matches[:5]:
+        print(render_explain(thread, config, now))
+        print()
+    if len(matches) > 5:
+        print(f"({len(matches) - 5} more threads matched; narrow the search.)")
     return 0
 
 
@@ -210,6 +243,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit the page without the <html>/<body> wrapper, for embedding.",
     )
     dashboard.set_defaults(func=cmd_dashboard)
+
+    audit = sub.add_parser(
+        "audit", help="Measure how much of the report was read vs assumed."
+    )
+    audit.add_argument("-i", "--input", help="Thread data file or directory.")
+    audit.add_argument("--all", action="store_true", help="Include other people's roles.")
+    audit.add_argument("--now", help="Evaluate as of this ISO timestamp.")
+    audit.add_argument("--timezone", help="Override the display timezone.")
+    audit.add_argument(
+        "--fail-on-review",
+        action="store_true",
+        help="Exit 2 if anything needs a human look.",
+    )
+    audit.set_defaults(func=cmd_audit)
+
+    explain = sub.add_parser(
+        "explain", help="Show exactly what was parsed out of one thread."
+    )
+    explain.add_argument("thread", help="Thread ID, or part of its title.")
+    explain.add_argument("-i", "--input", help="Thread data file or directory.")
+    explain.add_argument("--now", help="Evaluate as of this ISO timestamp.")
+    explain.add_argument("--timezone", help="Override the display timezone.")
+    explain.set_defaults(func=cmd_explain)
 
     notify = sub.add_parser("notify", help="Post the digest to a Discord webhook.")
     add_report_args(notify)

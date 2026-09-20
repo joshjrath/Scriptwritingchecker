@@ -251,6 +251,18 @@ class Submission:
         }
 
 
+class Confidence(str, Enum):
+    """How much of the verdict was read, rather than assumed."""
+
+    HIGH = "HIGH"      # assignee matched by user ID, deadline read from my section
+    MEDIUM = "MEDIUM"  # matched by display name, or deadline read outside my section
+    LOW = "LOW"        # something material had to be guessed
+
+    @property
+    def rank(self) -> int:
+        return {"HIGH": 0, "MEDIUM": 1, "LOW": 2}[self.value]
+
+
 @dataclass
 class Assignment:
     """A parsed thread plus the verdict on it."""
@@ -275,6 +287,21 @@ class Assignment:
     submissions: list[Submission] = field(default_factory=list)
     replies_after_delivery: int = 0
     warnings: list[str] = field(default_factory=list)
+    confidence: Confidence = Confidence.HIGH
+    #: Field name -> the text the value was read from, for `scriptcheck explain`.
+    evidence: dict = field(default_factory=dict)
+    #: Fields supplied by the overrides file rather than by parsing.
+    overridden: list[str] = field(default_factory=list)
+
+    @property
+    def needs_review(self) -> bool:
+        """True when a human should look before trusting this row."""
+
+        return (
+            self.confidence is Confidence.LOW
+            or self.status is Status.NO_DEADLINE
+            or any(w.startswith("!") for w in self.warnings)
+        )
 
     @property
     def first_submission(self) -> Optional[Submission]:
@@ -311,6 +338,10 @@ class Assignment:
             "submissions": [s.to_dict() for s in self.submissions],
             "replies_after_delivery": self.replies_after_delivery,
             "warnings": list(self.warnings),
+            "confidence": self.confidence.value,
+            "evidence": dict(self.evidence),
+            "overridden": list(self.overridden),
+            "needs_review": self.needs_review,
         }
 
 

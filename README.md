@@ -149,6 +149,8 @@ python -m scriptcheck report -f md|json|csv  # other formats
 python -m scriptcheck report --all           # include other people's roles
 python -m scriptcheck report --now 2026-09-25T09:00:00Z   # ask "where will I stand on Friday?"
 python -m scriptcheck check                  # fetch + report
+python -m scriptcheck audit                  # how much was read vs assumed
+python -m scriptcheck explain "Sans"         # full parse trace for one thread
 python -m scriptcheck dashboard              # build the web dashboard -> site/index.html
 python -m scriptcheck notify --only-if-action             # post the digest to a webhook
 ```
@@ -175,6 +177,88 @@ so a twice-daily schedule is not noise. Run it from cron:
 …or from the bundled GitHub Action (`.github/workflows/publish.yml`), which
 runs at 9am and 7pm ET. It needs the repo secrets `DISCORD_BOT_TOKEN`,
 `SCRIPTCHECK_WEBHOOK_URL` and `SCRIPTCHECK_MY_USER_ID`.
+
+## Accuracy
+
+Every parsing rule in this tool was inferred from screenshots of the workflow,
+not from your real threads. Treat the first live run as **unverified** until the
+audit says otherwise. The design principle throughout is that the tracker is
+allowed to be unsure, and is never allowed to be confidently wrong: anything it
+had to assume is reported as an assumption.
+
+### Confidence
+
+Every assignment carries a confidence level, shown in the report, the CSV, and
+as a `check` badge on the board:
+
+| | |
+| --- | --- |
+| `HIGH` | Assignee matched by Discord **user ID**, deadline read from a `Deadline:` line inside your own role section, with an explicit timezone. |
+| `MEDIUM` | Something was resolved more loosely — matched by display name, no timezone given, no time of day given, or no line actually labelled `Deadline`. |
+| `LOW` | Something material had to be guessed, or a signal says the row may be stale: the deadline came from outside your role section, the post has two sections for your role, a delivery message was edited after the deadline, the thread hit the fetch cap, or someone appears to have changed the deadline in conversation. |
+
+### Calibrating against your real threads
+
+```bash
+python -m scriptcheck fetch                  # pull the real data once
+python -m scriptcheck audit                  # how much was read vs assumed
+python -m scriptcheck explain "Sans"         # what exactly happened in one thread
+```
+
+`audit` prints coverage (what fraction of briefs yielded a role section, an
+assignee, a deadline), lists every assignment needing a human look, and — the
+important part — **names role headers it saw but does not know about**. If your
+briefs say `WRITER` and `known_roles` says `SCRIPT`, that assignment would
+otherwise vanish silently; the audit surfaces it instead.
+
+`explain` prints the full trace for one thread: which role sections were found,
+who each names, which line the deadline was read from, what was assumed, and the
+opening post exactly as fetched. When a row looks wrong, this tells you why in
+one screen.
+
+Fix what it finds by editing the config (`known_roles`, `my_names`,
+`submission_link_patterns`, `date_order`) — or, when a single thread is just
+odd, by hand:
+
+### overrides.json
+
+Corrections keyed by thread ID. They beat the parser, are shown in the report as
+`Corrected by hand`, and never silently revert:
+
+```json
+{
+  "1412…": { "deadline": "2026-09-25T23:59:00-04:00", "note": "Ash extended it in thread" },
+  "1398…": { "delivered_at": "2026-09-19T20:00:00-04:00", "links": ["https://drive.google.com/…"] },
+  "1377…": { "ignore": true, "note": "cancelled" },
+  "1355…": { "status": "SUBMITTED" }
+}
+```
+
+A corrected deadline or delivery re-decides the status; an explicit `status`
+wins outright. Unknown keys are rejected loudly rather than ignored.
+
+### What it deliberately will not do
+
+* **Guess a deadline.** No readable date in your section → `NO_DEADLINE`, never
+  a fallback to the title's publish slate.
+* **Follow a deadline change in conversation.** "Take an extra day" is detected
+  and flagged, but the brief stays the source of truth — acting on a parsed
+  guess about a schedule change is worse than being told to go read the thread.
+  Confirm it, then put it in `overrides.json`.
+* **Credit someone else's link as yours**, or count a message that merely talks
+  about the script.
+
+### Known limits
+
+* Delivery time comes from when the message was *posted*. Discord does not say
+  when a link was edited into a message, so a message edited after its deadline
+  is flagged as uncertain rather than judged.
+* Only threads in the configured channels are read, only up to
+  `max_messages_per_thread` messages each — the cap being hit is reported.
+* A script delivered by DM, in another channel, or as a non-Drive attachment is
+  invisible. Widen `submission_link_patterns` if your team uses something else.
+* Revisions are not modelled: the **first** qualifying link is the delivery.
+  Replies after it are counted and flagged as possible revision requests.
 
 ## The board (hosted outside Discord)
 
@@ -242,6 +326,7 @@ embedding in a host that supplies its own document shell.
 | `done_tags` / `ignore_tags` | see config | Forum tags treated as delivered / skipped. |
 | `webhook_url` | `""` | Where `notify` posts. |
 | `data_file` | `data/threads.json` | Default fetch/report path. |
+| `overrides_file` | `overrides.json` | Hand corrections that beat the parser. |
 
 ## Tests
 
@@ -249,8 +334,10 @@ embedding in a host that supplies its own document shell.
 python -m unittest discover -s tests -t .
 ```
 
-48 tests cover title and deadline parsing (including the two-timezone briefs,
+72 tests cover title and deadline parsing (including the two-timezone briefs,
 Discord `<t:…>` timestamps, date-only deadlines and month-name dates), role-section
 assignment, link detection, every status transition, the report formats, and the
 dashboard's data embedding (including that a thread title cannot break out of the
-embedded JSON).
+embedded JSON), plus the accuracy machinery: confidence levels, deadline-change
+detection, edited-message ambiguity, fetch-cap reporting, unknown role discovery
+and the overrides file.
