@@ -109,6 +109,26 @@ class Config:
 
     @classmethod
     def load(cls, path: Optional[str | Path] = None) -> "Config":
+        # A browser-only deploy (Railway, Render, Fly) has no way to edit a
+        # file in the image, so the whole config can arrive as one variable.
+        inline = os.environ.get("SCRIPTCHECK_CONFIG", "").strip()
+        if inline and not path:
+            try:
+                data = json.loads(inline)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"SCRIPTCHECK_CONFIG is not valid JSON: {exc}. It must be a "
+                    'single-line object, e.g. {"my_user_ids": ["123"], '
+                    '"channel_name_patterns": ["workflow"]}'
+                ) from exc
+            config = cls.from_dict(data)
+            config._apply_env()
+            return config
+
+        env_path = os.environ.get("SCRIPTCHECK_CONFIG_FILE", "").strip()
+        if env_path and not path:
+            path = env_path
+
         candidates = [Path(path)] if path else DEFAULT_CONFIG_PATHS
         for candidate in candidates:
             if candidate.is_file():

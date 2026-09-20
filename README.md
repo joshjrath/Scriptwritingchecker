@@ -276,6 +276,23 @@ the reminders re-arm for the new one.
 
 Drop any kind from `alert_kinds` to stop hearing about it.
 
+### Configuring a host with no filesystem
+
+On Railway, Render or Fly there is no config file to edit, so the whole config
+can travel as one variable — `SCRIPTCHECK_CONFIG`, holding the JSON inline:
+
+```
+SCRIPTCHECK_CONFIG={"my_roles":["SCRIPT"],"channel_name_patterns":["assignments","workflow"],"display_timezone":"America/New_York"}
+```
+
+`SCRIPTCHECK_MY_USER_ID`, `SCRIPTCHECK_WEBHOOK_URL` and `SCRIPTCHECK_ACCESS_TOKEN`
+layer on top of it, so secrets stay in their own variables. A malformed value is
+rejected at startup with the reason, rather than silently falling back to
+defaults. `SCRIPTCHECK_CONFIG_FILE` points at a path instead, if you mount one.
+
+Leaving `channel_name_patterns` empty means *every* channel gets read; the
+daemon warns about that at startup.
+
 ### Where to run it
 
 A gateway connection has to stay open, so this needs somewhere always-on. It is
@@ -285,7 +302,8 @@ a 256MB process that idles at almost nothing.
 | --- | --- |
 | **Fly.io** | `fly.toml` is included and sets `auto_stop_machines = false` — the machine must not sleep or the connection drops. A few dollars a month at the smallest size. |
 | **A Raspberry Pi or any spare box** | `deploy/systemd-scriptcheck.service` is a ready unit file with `Restart=always`. Free, and the board stays on your own network. |
-| **Any VPS / Railway / Render paid tier** | `Dockerfile` included, health check wired to `/healthz`. |
+| **Railway** | `railway.json` and the `Dockerfile` are included and it deploys from GitHub in a browser — no terminal, no CLI. Configure it with the variables above. |
+| **Any VPS / Render paid tier** | `Dockerfile` included, health check wired to `/healthz`. |
 | **Render free tier, or anything that sleeps on idle** | won't work — a sleeping process is a disconnected bot. |
 
 **Lock it down.** Unlike the GitHub Pages build, this board is a live URL with
@@ -481,7 +499,7 @@ embedding in a host that supplies its own document shell.
 python -m unittest discover -s tests -t .
 ```
 
-125 tests cover title and deadline parsing (including the two-timezone briefs,
+135 tests cover title and deadline parsing (including the two-timezone briefs,
 Discord `<t:…>` timestamps, date-only deadlines and month-name dates), role-section
 assignment, link detection, every status transition, the report formats, and the
 dashboard's data embedding (including that a thread title cannot break out of the

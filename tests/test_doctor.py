@@ -155,3 +155,68 @@ class TestRendering(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestConfigFromEnvironment(unittest.TestCase):
+    """A browser-only deploy configures everything through variables."""
+
+    def setUp(self):
+        import os
+
+        self.saved = {
+            k: os.environ.pop(k, None)
+            for k in (
+                "SCRIPTCHECK_CONFIG",
+                "SCRIPTCHECK_CONFIG_FILE",
+                "SCRIPTCHECK_MY_USER_ID",
+                "SCRIPTCHECK_WEBHOOK_URL",
+                "SCRIPTCHECK_ACCESS_TOKEN",
+            )
+        }
+
+    def tearDown(self):
+        import os
+
+        for key, value in self.saved.items():
+            os.environ.pop(key, None)
+            if value is not None:
+                os.environ[key] = value
+
+    def test_inline_json_becomes_the_config(self):
+        import json
+        import os
+
+        os.environ["SCRIPTCHECK_CONFIG"] = json.dumps(
+            {"channel_name_patterns": ["workflow"], "my_roles": ["SCRIPT"]}
+        )
+        config = Config.load()
+        self.assertEqual(config.channel_name_patterns, ["workflow"])
+        self.assertEqual(config.my_roles, ["SCRIPT"])
+
+    def test_separate_variables_still_layer_on_top(self):
+        import json
+        import os
+
+        os.environ["SCRIPTCHECK_CONFIG"] = json.dumps({"my_roles": ["SCRIPT"]})
+        os.environ["SCRIPTCHECK_MY_USER_ID"] = "424242424242424242"
+        os.environ["SCRIPTCHECK_ACCESS_TOKEN"] = "shh"
+        config = Config.load()
+        self.assertIn("424242424242424242", config.my_user_ids)
+        self.assertEqual(config.access_token, "shh")
+
+    def test_a_typo_in_the_variable_is_rejected_with_help(self):
+        import os
+
+        os.environ["SCRIPTCHECK_CONFIG"] = "{not json}"
+        with self.assertRaises(ValueError) as ctx:
+            Config.load()
+        self.assertIn("not valid JSON", str(ctx.exception))
+
+    def test_an_unknown_key_is_named(self):
+        import json
+        import os
+
+        os.environ["SCRIPTCHECK_CONFIG"] = json.dumps({"my_rolls": ["SCRIPT"]})
+        with self.assertRaises(ValueError) as ctx:
+            Config.load()
+        self.assertIn("my_rolls", str(ctx.exception))

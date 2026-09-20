@@ -428,6 +428,12 @@ def serve(config: Config, token: Optional[str] = None, host: str = "", port: int
     token = token or os.environ.get("DISCORD_BOT_TOKEN", "")
     if not token:
         raise RuntimeError("No bot token. Set DISCORD_BOT_TOKEN or pass --token.")
+    if not config.channel_ids and not config.channel_name_patterns:
+        logging.getLogger("scriptcheck.live").warning(
+            "No channel_ids or channel_name_patterns set, so every channel in "
+            "the server will be read. Set channel_name_patterns (e.g. "
+            '["assignments", "workflow"]) to keep this fast and quiet.'
+        )
     board = LiveBoard(
         config,
         token,
