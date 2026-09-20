@@ -185,8 +185,11 @@ embedded, no server, no build step, nothing to install on the viewing end:
 python -m scriptcheck dashboard -i data/threads.json -o site/index.html
 ```
 
-It shows counts by status, a **Needs you now** list, and a table of everything,
-with filters, search and sort. Deadlines are formatted in your `display_timezone`
+The page leads with the single next deadline — a ticking timecode when it is
+inside 24 hours — then a **deadline runway** plotting every brief on a time axis
+against a NOW line, count tiles that double as filters, a **Needs you now** list
+carrying the warnings, and a table of everything with search and sort. It is
+frosted glass over a slow gradient, light and dark. Deadlines are formatted in your `display_timezone`
 whatever machine opens it, and **statuses are recomputed in the browser** — so a
 page built this morning still shows a correct countdown tonight, and a `PENDING`
 script that has since passed its deadline shows up as `OVERDUE` without a rebuild.
