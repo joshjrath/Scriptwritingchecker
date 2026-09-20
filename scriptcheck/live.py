@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from .alerts import AlertTracker, format_digest
+from .audit import render_audit, render_explain
 from .config import Config
 from .dashboard import render_dashboard
 from .models import Attachment, Author, Message, Thread
@@ -216,6 +217,46 @@ class LiveBoard:
     async def handle_report(self, request):
         return self.web.json_response(self.state.payload())
 
+    async def handle_audit(self, request):
+        """The parse audit as plain text, readable on a phone."""
+
+        text = render_audit(
+            self.state.threads, self.state.assignments(), self.config
+        )
+        return self.web.Response(text=text, content_type="text/plain", charset="utf-8")
+
+    async def handle_explain(self, request):
+        """Full parse trace for one thread: /explain?q=<id or part of the title>."""
+
+        needle = (request.query.get("q") or "").strip()
+        if not needle:
+            names = "\n  ".join(
+                f"{t.id}  {t.name}" for t in sorted(self.state.threads, key=lambda t: t.name)
+            )
+            body = (
+                "Add ?q=<thread id or part of the title> to trace one thread.\n\n"
+                f"Threads being watched ({len(self.state.threads)}):\n  {names}\n"
+            )
+            return self.web.Response(text=body, content_type="text/plain", charset="utf-8")
+
+        lowered = needle.lower()
+        matches = [
+            t for t in self.state.threads if t.id == needle or lowered in t.name.lower()
+        ]
+        if not matches:
+            return self.web.Response(
+                text=f"No thread matches {needle!r}. Open /explain for the list.",
+                content_type="text/plain",
+                charset="utf-8",
+                status=404,
+            )
+        body = "\n\n".join(
+            render_explain(thread, self.config) for thread in matches[:5]
+        )
+        if len(matches) > 5:
+            body += f"\n\n({len(matches) - 5} more matched; narrow the search.)"
+        return self.web.Response(text=body, content_type="text/plain", charset="utf-8")
+
     async def handle_health(self, request):
         ready = bool(self.client and self.client.is_ready())
         body = {
@@ -293,6 +334,8 @@ class LiveBoard:
         app = self.web.Application(middlewares=[self._auth_middleware()])
         app.router.add_get("/", self.handle_index)
         app.router.add_get("/report.json", self.handle_report)
+        app.router.add_get("/audit", self.handle_audit)
+        app.router.add_get("/explain", self.handle_explain)
         app.router.add_get("/events", self.handle_events)
         app.router.add_get("/healthz", self.handle_health)
         return app

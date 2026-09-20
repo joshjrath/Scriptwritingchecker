@@ -196,3 +196,57 @@ class TestAccessToken(unittest.IsolatedAsyncioTestCase):
 
     async def test_health_probes_stay_open(self):
         self.assertIn((await self.client.get("/healthz")).status, (200, 503))
+
+
+class TestDiagnosticRoutes(unittest.IsolatedAsyncioTestCase):
+    """Calibration has to be possible from a phone, not just a terminal."""
+
+    async def asyncSetUp(self):
+        self.board = LiveBoard(CONFIG, token="x", host="127.0.0.1", port=0)
+        self.board.state.replace_all(load_threads(FIXTURE))
+        self.client = TestClient(TestServer(self.board.build_app()))
+        await self.client.start_server()
+
+    async def asyncTearDown(self):
+        await self.client.close()
+
+    async def test_audit_renders_as_plain_text(self):
+        response = await self.client.get("/audit")
+        self.assertEqual(response.status, 200)
+        self.assertIn("text/plain", response.headers["Content-Type"])
+        text = await response.text()
+        self.assertIn("PARSE AUDIT", text)
+        self.assertIn("Needs a human look", text)
+
+    async def test_explain_without_a_query_lists_the_threads(self):
+        text = await (await self.client.get("/explain")).text()
+        self.assertIn("1001", text)
+        self.assertIn("What If Sans Remembered Every RESET?", text)
+
+    async def test_explain_traces_a_thread_by_title(self):
+        text = await (await self.client.get("/explain?q=Sans")).text()
+        self.assertIn("9/20/2026 @ 11:59 PM ET", text)
+        self.assertIn("OPENING POST AS FETCHED", text)
+
+    async def test_explain_traces_a_thread_by_id(self):
+        text = await (await self.client.get("/explain?q=1007")).text()
+        self.assertIn("Gojo", text)
+        self.assertIn("NOT FOUND", text)
+
+    async def test_a_miss_says_so(self):
+        response = await self.client.get("/explain?q=nothing-like-this")
+        self.assertEqual(response.status, 404)
+        self.assertIn("No thread matches", await response.text())
+
+    async def test_the_diagnostics_are_behind_the_access_token(self):
+        config = Config(access_token="s3cret", overrides_file="/nonexistent-overrides.json")
+        board = LiveBoard(config, token="x", host="127.0.0.1", port=0)
+        board.state.replace_all(load_threads(FIXTURE))
+        client = TestClient(TestServer(board.build_app()))
+        await client.start_server()
+        try:
+            self.assertEqual((await client.get("/audit")).status, 404)
+            self.assertEqual((await client.get("/explain?q=Sans")).status, 404)
+            self.assertEqual((await client.get("/audit?k=s3cret")).status, 200)
+        finally:
+            await client.close()

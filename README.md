@@ -229,6 +229,14 @@ python -m scriptcheck serve
 | `/events` | SSE stream; the page reconnects with backoff on its own |
 | `/report.json` | current state as JSON |
 | `/healthz` | `200` when the gateway is connected and a sync has happened, `503` otherwise — point your host's health check here |
+| `/audit` | the parse audit as plain text |
+| `/explain?q=Sans` | full parse trace for one thread; `/explain` alone lists them |
+
+`/audit` and `/explain` matter because calibration otherwise needs a terminal.
+Behind the access token like everything else, they make it possible to check
+what the parser did from a phone. The scheduled workflow has the same escape
+hatch: run it from the Actions tab with an `explain` input and the trace appears
+in the job log.
 
 ### What updates instantly
 

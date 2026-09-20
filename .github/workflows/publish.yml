@@ -8,6 +8,11 @@ on:
     - cron: "0 13 * * *"   # 9am ET
     - cron: "0 23 * * *"   # 7pm ET
   workflow_dispatch:
+    inputs:
+      explain:
+        description: "Trace one thread (ID or part of its title) in the job log"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -53,6 +58,12 @@ jobs:
       # brief format changed, it shows up here before the board goes wrong.
       - name: Audit what was read vs assumed
         run: python -m scriptcheck audit -i data/threads.json
+
+      # Run from the Actions tab with a thread name to see exactly what the
+      # parser made of it - no terminal needed.
+      - name: Explain one thread
+        if: inputs.explain != ''
+        run: python -m scriptcheck explain "${{ inputs.explain }}" -i data/threads.json
 
       # --redact-links keeps delivery times but strips Drive URLs and thread
       # links. Drop the flag only if the Pages site is private.
