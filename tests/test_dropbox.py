@@ -248,3 +248,23 @@ class TestCollecting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestChannelScoping(unittest.TestCase):
+    def test_dropbox_mode_does_not_also_scan_every_other_channel(self):
+        config = Config(dropbox_channel_patterns=["my-assignments"])
+        self.assertTrue(config.dropbox_matches("my-assignments", "1"))
+        # Personal servers have other channels; none of them are assignments.
+        self.assertFalse(config.channel_matches("general", "2"))
+        self.assertFalse(config.channel_matches("random", "3"))
+
+    def test_an_explicit_thread_filter_still_wins(self):
+        config = Config(
+            dropbox_channel_patterns=["my-assignments"],
+            channel_name_patterns=["workflow"],
+        )
+        self.assertTrue(config.channel_matches("their-workflow", "2"))
+        self.assertFalse(config.channel_matches("general", "3"))
+
+    def test_without_dropbox_an_empty_filter_still_means_everything(self):
+        self.assertTrue(Config().channel_matches("anything", "1"))

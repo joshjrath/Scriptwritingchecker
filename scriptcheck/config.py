@@ -175,4 +175,8 @@ class Config:
             return any(
                 re.search(p, name or "", re.IGNORECASE) for p in self.channel_name_patterns
             )
+        # Drop-box mode names exactly the channels it wants. Without this, an
+        # empty filter would also walk every other channel in your own server.
+        if self.dropbox_channel_patterns:
+            return False
         return True
