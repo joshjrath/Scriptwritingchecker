@@ -149,6 +149,7 @@ python -m scriptcheck report -f md|json|csv  # other formats
 python -m scriptcheck report --all           # include other people's roles
 python -m scriptcheck report --now 2026-09-25T09:00:00Z   # ask "where will I stand on Friday?"
 python -m scriptcheck check                  # fetch + report
+python -m scriptcheck dashboard              # build the web dashboard -> site/index.html
 python -m scriptcheck notify --only-if-action             # post the digest to a webhook
 ```
 
@@ -171,9 +172,47 @@ so a twice-daily schedule is not noise. Run it from cron:
 0 9,19 * * * cd ~/Scriptwritingchecker && python -m scriptcheck check >/dev/null && python -m scriptcheck notify --only-if-action
 ```
 
-…or from the bundled GitHub Action (`.github/workflows/reminders.yml`), which
+…or from the bundled GitHub Action (`.github/workflows/publish.yml`), which
 runs at 9am and 7pm ET. It needs the repo secrets `DISCORD_BOT_TOKEN`,
 `SCRIPTCHECK_WEBHOOK_URL` and `SCRIPTCHECK_MY_USER_ID`.
+
+## The board (hosted outside Discord)
+
+`dashboard` renders the whole report as one self-contained HTML file — data
+embedded, no server, no build step, nothing to install on the viewing end:
+
+```bash
+python -m scriptcheck dashboard -i data/threads.json -o site/index.html
+```
+
+It shows counts by status, a **Needs you now** list, and a table of everything,
+with filters, search and sort. Deadlines are formatted in your `display_timezone`
+whatever machine opens it, and **statuses are recomputed in the browser** — so a
+page built this morning still shows a correct countdown tonight, and a `PENDING`
+script that has since passed its deadline shows up as `OVERDUE` without a rebuild.
+
+Where to put it:
+
+| | |
+| --- | --- |
+| **GitHub Pages** | `.github/workflows/publish.yml` fetches, builds and deploys on a schedule. Zero hosting cost, always current. Pages on a **private** repo needs a paid GitHub plan; on a public repo the page is world-readable. |
+| **Any static host** | Netlify drop, S3, Cloudflare Pages, a folder on your own server — it's one file. |
+| **Locally** | `python -m scriptcheck dashboard && open site/index.html`. |
+
+**Before you host it publicly, read this.** The page contains client video
+titles, deadlines, and your Google Drive links. `--redact-links` keeps the
+delivery times and statuses but strips the Drive URLs and the Discord thread
+links:
+
+```bash
+python -m scriptcheck dashboard -i data/threads.json -o site/index.html --redact-links
+```
+
+The bundled workflow passes `--redact-links` by default. Drop it only if the
+site is genuinely private.
+
+`--fragment` emits the same page without the `<html>`/`<body>` wrapper, for
+embedding in a host that supplies its own document shell.
 
 ## Configuration
 
@@ -207,6 +246,8 @@ runs at 9am and 7pm ET. It needs the repo secrets `DISCORD_BOT_TOKEN`,
 python -m unittest discover -s tests -t .
 ```
 
-42 tests cover title and deadline parsing (including the two-timezone briefs,
+48 tests cover title and deadline parsing (including the two-timezone briefs,
 Discord `<t:…>` timestamps, date-only deadlines and month-name dates), role-section
-assignment, link detection, every status transition, and the report formats.
+assignment, link detection, every status transition, the report formats, and the
+dashboard's data embedding (including that a thread title cannot break out of the
+embedded JSON).

@@ -9,3 +9,4 @@ dist/
 scriptcheck.config.local.json
 .env
 scriptcheck.config.json
+site/

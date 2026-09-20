@@ -1,0 +1,64 @@
+name: Refresh script board
+
+# One scheduled pass: pull the threads with the bot, publish the dashboard,
+# and ping the webhook only when something actually needs Josh.
+on:
+  schedule:
+    - cron: "0 13 * * *"   # 9am ET
+    - cron: "0 23 * * *"   # 7pm ET
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: script-board
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - name: Pull threads from Discord
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          SCRIPTCHECK_MY_USER_ID: ${{ secrets.SCRIPTCHECK_MY_USER_ID }}
+        run: python -m scriptcheck fetch -o data/threads.json
+
+      - name: Print the report to the job log
+        env:
+          SCRIPTCHECK_MY_USER_ID: ${{ secrets.SCRIPTCHECK_MY_USER_ID }}
+        run: python -m scriptcheck report -i data/threads.json
+
+      # --redact-links keeps delivery times but strips Drive URLs and thread
+      # links. Drop the flag only if the Pages site is private.
+      - name: Build the dashboard
+        env:
+          SCRIPTCHECK_MY_USER_ID: ${{ secrets.SCRIPTCHECK_MY_USER_ID }}
+        run: python -m scriptcheck dashboard -i data/threads.json -o site/index.html --redact-links
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Remind me if anything is owed
+        env:
+          SCRIPTCHECK_WEBHOOK_URL: ${{ secrets.SCRIPTCHECK_WEBHOOK_URL }}
+          SCRIPTCHECK_MY_USER_ID: ${{ secrets.SCRIPTCHECK_MY_USER_ID }}
+        run: python -m scriptcheck notify -i data/threads.json --only-if-action

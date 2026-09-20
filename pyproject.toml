@@ -17,3 +17,6 @@ scriptcheck = "scriptcheck.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["scriptcheck*"]
+
+[tool.setuptools.package-data]
+"scriptcheck.templates" = ["*.html"]

@@ -1,0 +1,865 @@
+<title>Script Board</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --paper: #eef1ef;
+    --surface: #fbfcfb;
+    --surface-2: #f4f6f4;
+    --ink: #11191b;
+    --ink-2: #3c4a4d;
+    --muted: #5d6d70;
+    --rule: #d6dedb;
+    --accent: #0e6b60;
+    --accent-soft: #d8ebe7;
+    --critical: #a82a1d;
+    --today: #a85c04;
+    --soon: #756400;
+    --unknown: #1d5a9e;
+    --ok: #1b6640;
+    --shadow: 0 1px 2px rgba(17, 25, 27, .06), 0 8px 24px -16px rgba(17, 25, 27, .35);
+
+    --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --font-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0d1315;
+      --surface: #151d20;
+      --surface-2: #1b2427;
+      --ink: #e3eae8;
+      --ink-2: #b9c7c6;
+      --muted: #8a9c9e;
+      --rule: #263336;
+      --accent: #4fd0bb;
+      --accent-soft: #123b37;
+      --critical: #ff8578;
+      --today: #f5a25d;
+      --soon: #ddc34a;
+      --unknown: #7db4f2;
+      --ok: #62c78e;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 26px -18px rgba(0, 0, 0, .9);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #0d1315;
+    --surface: #151d20;
+    --surface-2: #1b2427;
+    --ink: #e3eae8;
+    --ink-2: #b9c7c6;
+    --muted: #8a9c9e;
+    --rule: #263336;
+    --accent: #4fd0bb;
+    --accent-soft: #123b37;
+    --critical: #ff8578;
+    --today: #f5a25d;
+    --soon: #ddc34a;
+    --unknown: #7db4f2;
+    --ok: #62c78e;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 26px -18px rgba(0, 0, 0, .9);
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    width: 100%;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding-left: 16px;
+    padding-right: 16px;
+    box-sizing: border-box;
+  }
+
+  /* ---------- header ---------- */
+  .topbar {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 20;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .bar-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-block: 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .mark {
+    flex: none;
+    width: 30px; height: 30px;
+    border-radius: 5px;
+    background:
+      repeating-linear-gradient(115deg, var(--accent) 0 6px, transparent 6px 12px),
+      var(--accent-soft);
+    border: 1px solid var(--accent);
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -.015em;
+    margin: 0;
+  }
+  .sub { margin: 1px 0 0; font-size: 12.5px; color: var(--muted); }
+  .freshness {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    padding: 4px 10px;
+    white-space: nowrap;
+  }
+  .freshness.stale { color: var(--today); border-color: color-mix(in srgb, var(--today) 45%, var(--rule)); }
+
+  main { padding-block: 22px 56px; }
+
+  .banner {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    background: var(--surface-2);
+    border: 1px dashed var(--rule);
+    border-radius: 6px;
+    padding: 9px 12px;
+    margin: 0 0 20px;
+  }
+
+  /* ---------- tiles ---------- */
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 30px;
+  }
+  @media (max-width: 860px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 420px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  .tile {
+    appearance: none;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--tone, var(--muted));
+    border-radius: 8px;
+    padding: 11px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    transition: border-color .12s ease, background .12s ease;
+  }
+  .tile:hover { background: var(--surface-2); }
+  .tile[aria-pressed="true"] {
+    border-color: var(--tone, var(--accent));
+    background: var(--surface-2);
+    box-shadow: inset 0 0 0 1px var(--tone, var(--accent));
+  }
+  .tile .n {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    color: var(--tone, var(--ink));
+  }
+  .tile .k {
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .tile.zero .n { color: var(--muted); opacity: .45; }
+
+  /* ---------- sections ---------- */
+  .block { margin-bottom: 34px; }
+  .sect {
+    font-family: var(--font-display);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 12px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .count { font-family: var(--font-mono); letter-spacing: 0; opacity: .8; }
+
+  /* ---------- urgent cards ---------- */
+  .urgent { display: flex; flex-direction: column; gap: 10px; }
+  .card {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 14px 16px 14px 20px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 4px;
+    background: var(--tone, var(--muted));
+  }
+  .card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .card h3 {
+    font-family: var(--font-body);
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    line-height: 1.35;
+    text-wrap: balance;
+  }
+  .card h3 a { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; }
+  .card h3 a:hover { border-bottom-color: var(--accent); }
+  .clock {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--tone, var(--ink));
+    text-align: right;
+  }
+  .clock small { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-top: 9px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    align-items: center;
+  }
+  .slate {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: .04em;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--ink-2);
+    background: var(--surface-2);
+  }
+  .warn {
+    margin-top: 9px;
+    font-size: 13px;
+    color: var(--ink-2);
+    border-left: 2px solid color-mix(in srgb, var(--today) 60%, var(--rule));
+    padding-left: 10px;
+  }
+  .empty {
+    background: var(--surface);
+    border: 1px dashed var(--rule);
+    border-radius: 8px;
+    padding: 26px 18px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .empty strong { display: block; color: var(--ink); font-weight: 600; margin-bottom: 3px; }
+
+  /* ---------- controls ---------- */
+  .tablehead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .tablehead .sect { margin: 0; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  input[type="search"], select {
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 6px 9px;
+  }
+  input[type="search"] { min-width: 210px; }
+  input[type="search"]:focus-visible, select:focus-visible, .tile:focus-visible, .chip:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .chip {
+    appearance: none;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    padding: 3px 11px;
+  }
+  .chip[aria-pressed="true"] {
+    color: var(--surface);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* ---------- table ---------- */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  thead th {
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+    background: var(--surface-2);
+  }
+  tbody td { padding: 11px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--surface-2); }
+  .t-name { font-weight: 500; line-height: 1.35; }
+  .t-name a { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; }
+  .t-name a:hover { border-bottom-color: var(--accent); }
+  .t-sub { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pill {
+    display: inline-block;
+    font-family: var(--font-display);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--tone, var(--muted));
+    border: 1px solid color-mix(in srgb, var(--tone, var(--muted)) 40%, transparent);
+    background: color-mix(in srgb, var(--tone, var(--muted)) 11%, transparent);
+    border-radius: 4px;
+    padding: 2px 7px;
+    white-space: nowrap;
+  }
+  .link { color: var(--accent); text-decoration: none; font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
+  .link:hover { text-decoration: underline; }
+  .dash { color: var(--muted); }
+
+  @media (max-width: 720px) {
+    .tablewrap { border: 0; background: transparent; overflow-x: visible; }
+    table, tbody, tr, td { display: block; width: 100%; box-sizing: border-box; }
+    thead { display: none; }
+    tbody tr {
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      margin-bottom: 10px;
+      padding: 4px 0;
+    }
+    tbody td { border-bottom: 0; padding: 5px 14px; display: flex; gap: 12px; justify-content: space-between; }
+    tbody td::before {
+      content: attr(data-label);
+      font-family: var(--font-display);
+      font-size: 10.5px;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      flex: none;
+      padding-top: 2px;
+    }
+    tbody td > * { text-align: right; }
+    .t-name { text-align: right; }
+  }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 14px;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  footer code {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    background: var(--surface-2);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+</style>
+
+<header class="topbar">
+  <div class="wrap bar-inner">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <h1>Script Board</h1>
+        <p class="sub" id="subline">Loading&hellip;</p>
+      </div>
+    </div>
+    <span class="freshness" id="freshness"></span>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="banner" id="banner" hidden></p>
+
+  <section class="tiles" id="tiles" aria-label="Status summary"></section>
+
+  <section class="block">
+    <h2 class="sect">Needs you now</h2>
+    <div class="urgent" id="urgent"></div>
+  </section>
+
+  <section class="block">
+    <div class="tablehead">
+      <h2 class="sect">Every assignment <span class="count" id="count"></span></h2>
+      <div class="controls">
+        <input id="search" type="search" placeholder="Filter by title, slot or channel" aria-label="Filter assignments">
+        <select id="sort" aria-label="Sort assignments">
+          <option value="urgency">Sort: urgency</option>
+          <option value="deadline">Sort: deadline</option>
+          <option value="slate">Sort: publish date</option>
+          <option value="title">Sort: title</option>
+        </select>
+      </div>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Status</th>
+            <th scope="col">Assignment</th>
+            <th scope="col">Deadline</th>
+            <th scope="col">Time</th>
+            <th scope="col">Words</th>
+            <th scope="col">Delivered</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer id="foot"></footer>
+</main>
+
+<script id="report-data" type="application/json">__REPORT_DATA__</script>
+<script>
+(function () {
+  "use strict";
+
+  var DATA = {};
+  try {
+    DATA = JSON.parse(document.getElementById("report-data").textContent);
+  } catch (err) {
+    DATA = { assignments: [] };
+  }
+  var ITEMS = DATA.assignments || [];
+  var TZ = DATA.timezone || "UTC";
+  var DUE_SOON_HOURS = typeof DATA.due_soon_hours === "number" ? DATA.due_soon_hours : 48;
+
+  var META = {
+    OVERDUE:        { label: "Overdue",        tone: "var(--critical)", rank: 0 },
+    DUE_TODAY:      { label: "Due today",      tone: "var(--today)",    rank: 1 },
+    DUE_SOON:       { label: "Due soon",       tone: "var(--soon)",     rank: 2 },
+    NO_DEADLINE:    { label: "No deadline",    tone: "var(--unknown)",  rank: 3 },
+    PENDING:        { label: "Pending",        tone: "var(--muted)",    rank: 4 },
+    SUBMITTED_LATE: { label: "Delivered late", tone: "var(--ok)",       rank: 5 },
+    SUBMITTED:      { label: "Delivered",      tone: "var(--ok)",       rank: 6 },
+    NOT_MINE:       { label: "Not mine",       tone: "var(--muted)",    rank: 7 },
+    IGNORED:        { label: "Ignored",        tone: "var(--muted)",    rank: 8 }
+  };
+  var TILES = ["OVERDUE", "DUE_TODAY", "DUE_SOON", "PENDING", "NO_DEADLINE", "DELIVERED"];
+
+  var dateFmt, timeFmt, slateFmt;
+  try {
+    dateFmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: TZ, weekday: "short", month: "short", day: "numeric",
+      hour: "numeric", minute: "2-digit", timeZoneName: "short"
+    });
+    timeFmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: TZ, month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+    });
+  } catch (err) {
+    dateFmt = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
+    timeFmt = dateFmt;
+  }
+  /* A publish slate is a calendar date, not a moment: render it in UTC so it
+     does not slip a day when the display timezone is behind. */
+  slateFmt = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
+
+  function fmt(iso, formatter) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d)) return "";
+    return (formatter || dateFmt).format(d);
+  }
+
+  function span(ms) {
+    var s = Math.abs(Math.round(ms / 1000));
+    var d = Math.floor(s / 86400);
+    var h = Math.floor((s % 86400) / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    if (d) return d + "d " + h + "h";
+    if (h) return h + "h " + m + "m";
+    return m + "m";
+  }
+
+  /* Statuses are recomputed in the browser so the page stays truthful about
+     time even when the data behind it was fetched hours ago. */
+  function liveStatus(item, now) {
+    var s = item.status;
+    if (s === "SUBMITTED" || s === "SUBMITTED_LATE" || s === "NOT_MINE" || s === "IGNORED") return s;
+    if (!item.deadline) return "NO_DEADLINE";
+    var ms = new Date(item.deadline) - now;
+    if (isNaN(ms)) return "NO_DEADLINE";
+    if (ms < 0) return "OVERDUE";
+    if (ms <= 24 * 3600e3) return "DUE_TODAY";
+    if (ms <= DUE_SOON_HOURS * 3600e3) return "DUE_SOON";
+    return "PENDING";
+  }
+
+  function firstSubmission(item) {
+    return (item.submissions && item.submissions.length) ? item.submissions[0] : null;
+  }
+
+  function countdown(item, now) {
+    if (item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE") {
+      var sub = firstSubmission(item);
+      if (!sub || !item.deadline || !sub.posted_at) return { main: "done", sub: "" };
+      var margin = new Date(item.deadline) - new Date(sub.posted_at);
+      return { main: span(margin) + (margin >= 0 ? " early" : " late"), sub: "delivered" };
+    }
+    if (!item.deadline) return { main: "—", sub: "no date in brief" };
+    var ms = new Date(item.deadline) - now;
+    return ms < 0
+      ? { main: span(ms) + " over", sub: "past deadline" }
+      : { main: span(ms) + " left", sub: "until deadline" };
+  }
+
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  var state = { filter: null, query: "", sort: "urgency" };
+
+  function decorate(now) {
+    ITEMS.forEach(function (item) { item.live = liveStatus(item, now); });
+  }
+
+  function counts() {
+    var out = {};
+    TILES.forEach(function (key) { out[key] = 0; });
+    ITEMS.forEach(function (item) {
+      if (item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE") out.DELIVERED++;
+      else if (out[item.live] !== undefined) out[item.live]++;
+    });
+    return out;
+  }
+
+  function tileLabel(key) {
+    return key === "DELIVERED" ? "Delivered" : META[key].label;
+  }
+
+  function tileTone(key) {
+    return key === "DELIVERED" ? "var(--ok)" : META[key].tone;
+  }
+
+  function matchesFilter(item) {
+    if (!state.filter) return true;
+    if (state.filter === "DELIVERED") return item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE";
+    return item.live === state.filter;
+  }
+
+  function matchesQuery(item) {
+    if (!state.query) return true;
+    var hay = [item.thread_name, item.title, item.slot, item.channel, item.role]
+      .join(" ").toLowerCase();
+    return hay.indexOf(state.query) !== -1;
+  }
+
+  function sorted(list) {
+    var copy = list.slice();
+    var far = 8.64e15;
+    copy.sort(function (a, b) {
+      if (state.sort === "title") return (a.title || "").localeCompare(b.title || "");
+      if (state.sort === "slate") {
+        return (a.slate_date ? +new Date(a.slate_date) : far) - (b.slate_date ? +new Date(b.slate_date) : far);
+      }
+      var da = a.deadline ? +new Date(a.deadline) : far;
+      var db = b.deadline ? +new Date(b.deadline) : far;
+      if (state.sort === "deadline") return da - db;
+      var ra = META[a.live] ? META[a.live].rank : 9;
+      var rb = META[b.live] ? META[b.live].rank : 9;
+      return ra - rb || da - db;
+    });
+    return copy;
+  }
+
+  function renderTiles(tally) {
+    var host = document.getElementById("tiles");
+    host.textContent = "";
+    TILES.forEach(function (key) {
+      var n = tally[key] || 0;
+      var btn = el("button", "tile" + (n ? "" : " zero"));
+      btn.type = "button";
+      btn.style.setProperty("--tone", tileTone(key));
+      btn.setAttribute("aria-pressed", state.filter === key ? "true" : "false");
+      btn.appendChild(el("span", "n", String(n)));
+      btn.appendChild(el("span", "k", tileLabel(key)));
+      btn.addEventListener("click", function () {
+        state.filter = state.filter === key ? null : key;
+        render();
+      });
+      host.appendChild(btn);
+    });
+  }
+
+  function metaRow(item) {
+    var row = el("div", "meta");
+    if (item.slot) row.appendChild(el("span", "slate", item.slot));
+    var bits = [];
+    if (item.word_count) bits.push(item.word_count.toLocaleString() + " words");
+    if (item.channel) bits.push("#" + item.channel);
+    if (item.slate_date) bits.push("airs " + fmt(item.slate_date, slateFmt));
+    if (item.deadline) bits.push("due " + fmt(item.deadline));
+    bits.forEach(function (text) { row.appendChild(el("span", null, text)); });
+    return row;
+  }
+
+  function renderUrgent(now) {
+    var host = document.getElementById("urgent");
+    host.textContent = "";
+    var urgent = sorted(ITEMS.filter(function (item) {
+      return ["OVERDUE", "DUE_TODAY", "DUE_SOON", "NO_DEADLINE"].indexOf(item.live) !== -1;
+    }));
+
+    if (!urgent.length) {
+      var ok = el("div", "empty");
+      ok.appendChild(el("strong", null, "Nothing is owed right now."));
+      ok.appendChild(el("span", null,
+        "No script is overdue or due inside the next " + DUE_SOON_HOURS + " hours."));
+      host.appendChild(ok);
+      return;
+    }
+
+    urgent.forEach(function (item) {
+      var card = el("article", "card");
+      card.style.setProperty("--tone", META[item.live].tone);
+
+      var top = el("div", "card-top");
+      var head = el("div");
+      var title = el("h3");
+      if (item.jump_url) {
+        var a = el("a", null, item.title || item.thread_name);
+        a.href = item.jump_url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        title.appendChild(a);
+      } else {
+        title.textContent = item.title || item.thread_name;
+      }
+      head.appendChild(title);
+      var pill = el("span", "pill", META[item.live].label);
+      pill.style.setProperty("--tone", META[item.live].tone);
+      head.appendChild(pill);
+      top.appendChild(head);
+
+      var c = countdown(item, now);
+      var clock = el("div", "clock");
+      clock.appendChild(document.createTextNode(c.main));
+      clock.appendChild(el("small", null, c.sub));
+      clock.dataset.deadline = item.deadline || "";
+      top.appendChild(clock);
+
+      card.appendChild(top);
+      card.appendChild(metaRow(item));
+      (item.warnings || []).forEach(function (w) { card.appendChild(el("p", "warn", w)); });
+      host.appendChild(card);
+    });
+  }
+
+  function cell(row, label, node) {
+    var td = el("td");
+    td.setAttribute("data-label", label);
+    td.appendChild(node);
+    row.appendChild(td);
+    return td;
+  }
+
+  function renderTable(now) {
+    var host = document.getElementById("rows");
+    host.textContent = "";
+    var list = sorted(ITEMS.filter(function (item) {
+      return matchesFilter(item) && matchesQuery(item);
+    }));
+    document.getElementById("count").textContent =
+      list.length + (list.length === ITEMS.length ? "" : " of " + ITEMS.length);
+
+    if (!list.length) {
+      var tr = el("tr");
+      var td = el("td", null, "Nothing matches that filter.");
+      td.colSpan = 6;
+      td.style.color = "var(--muted)";
+      tr.appendChild(td);
+      host.appendChild(tr);
+      return;
+    }
+
+    list.forEach(function (item) {
+      var tr = el("tr");
+
+      var pill = el("span", "pill", META[item.live].label);
+      pill.style.setProperty("--tone", META[item.live].tone);
+      cell(tr, "Status", pill);
+
+      var name = el("div", "t-name");
+      if (item.jump_url) {
+        var a = el("a", null, item.title || item.thread_name);
+        a.href = item.jump_url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        name.appendChild(a);
+      } else {
+        name.textContent = item.title || item.thread_name;
+      }
+      var subBits = [item.slot, item.channel ? "#" + item.channel : ""].filter(Boolean);
+      if (subBits.length) name.appendChild(el("span", "t-sub", subBits.join("  ·  ")));
+      cell(tr, "Assignment", name);
+
+      cell(tr, "Deadline", el("span", "num", item.deadline ? fmt(item.deadline) : "—"));
+
+      var c = countdown(item, now);
+      var clock = el("span", "num", c.main);
+      clock.style.color = META[item.live].tone;
+      clock.dataset.deadline = item.deadline || "";
+      cell(tr, "Time", clock);
+
+      cell(tr, "Words", el("span", "num", item.word_count ? item.word_count.toLocaleString() : "—"));
+
+      var sub = firstSubmission(item);
+      var delivered;
+      if (sub) {
+        var url = (sub.links || [])[0] || "";
+        if (url && /^https?:/i.test(url)) {
+          delivered = el("a", "link", fmt(sub.posted_at, timeFmt) || "open");
+          delivered.href = url;
+          delivered.target = "_blank";
+          delivered.rel = "noopener";
+        } else {
+          delivered = el("span", "num", fmt(sub.posted_at, timeFmt) || "yes");
+        }
+      } else {
+        delivered = el("span", "dash", "not yet");
+      }
+      cell(tr, "Delivered", delivered);
+
+      host.appendChild(tr);
+    });
+  }
+
+  function renderChips() {
+    var host = document.getElementById("chips");
+    host.textContent = "";
+    var all = el("button", "chip", "All");
+    all.type = "button";
+    all.setAttribute("aria-pressed", state.filter ? "false" : "true");
+    all.addEventListener("click", function () { state.filter = null; render(); });
+    host.appendChild(all);
+
+    TILES.forEach(function (key) {
+      var chip = el("button", "chip", tileLabel(key));
+      chip.type = "button";
+      chip.setAttribute("aria-pressed", state.filter === key ? "true" : "false");
+      chip.addEventListener("click", function () {
+        state.filter = state.filter === key ? null : key;
+        render();
+      });
+      host.appendChild(chip);
+    });
+  }
+
+  function renderHeader(now) {
+    var roles = (DATA.roles || []).join(" / ") || "SCRIPT";
+    document.getElementById("subline").textContent =
+      roles + " assignments · times in " + TZ.split("/").pop().replace(/_/g, " ");
+
+    var fresh = document.getElementById("freshness");
+    var stamp = DATA.fetched_at || DATA.generated_at;
+    if (stamp) {
+      var age = now - new Date(stamp);
+      var label = age < 90 * 60e3 ? "updated " + span(age) + " ago" : "data " + span(age) + " old";
+      fresh.textContent = label;
+      fresh.classList.toggle("stale", age > 24 * 3600e3);
+      fresh.title = "Snapshot taken " + fmt(stamp);
+    } else {
+      fresh.hidden = true;
+    }
+
+    if (DATA.banner) {
+      var banner = document.getElementById("banner");
+      banner.textContent = DATA.banner;
+      banner.hidden = false;
+    }
+
+    document.getElementById("foot").innerHTML =
+      "Built from the Discord threads by <code>scriptcheck</code>. " +
+      "A submission counts only when a Drive link is posted in the thread by you. " +
+      "Statuses recompute in the browser, so the countdowns stay right between refreshes.";
+  }
+
+  function render() {
+    var now = new Date();
+    decorate(now);
+    renderTiles(counts());
+    renderChips();
+    renderUrgent(now);
+    renderTable(now);
+  }
+
+  document.getElementById("search").addEventListener("input", function (e) {
+    state.query = e.target.value.trim().toLowerCase();
+    renderTable(new Date());
+  });
+  document.getElementById("sort").addEventListener("change", function (e) {
+    state.sort = e.target.value;
+    render();
+  });
+
+  renderHeader(new Date());
+  render();
+  setInterval(render, 60e3);
+})();
+</script>

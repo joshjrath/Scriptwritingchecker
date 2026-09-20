@@ -11,6 +11,7 @@ from typing import Optional
 
 from . import __version__
 from .config import Config
+from .dashboard import render_dashboard
 from .engine import build_assignments
 from .models import Status
 from .report import render
@@ -96,6 +97,32 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_dashboard(args) -> int:
+    config = _load_config(args)
+    items, now = _assignments(args, config)
+    fetched_at = ""
+    source = Path(args.input or config.data_file)
+    if source.is_file():
+        try:
+            fetched_at = json.loads(source.read_text()).get("fetched_at", "")
+        except (json.JSONDecodeError, AttributeError):
+            fetched_at = ""
+    html = render_dashboard(
+        items,
+        config,
+        now=now,
+        fetched_at=fetched_at,
+        banner=args.banner or "",
+        redact_links=args.redact_links,
+        fragment=args.fragment,
+    )
+    out = Path(args.out or "site/index.html")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    print(f"Wrote {out} ({len(items)} assignment(s), {len(html) // 1024} KB)")
+    return 0
+
+
 def cmd_notify(args) -> int:
     from .notify import send_webhook
 
@@ -164,6 +191,25 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("-o", "--out", help="Where to save the thread data.")
     check.add_argument("--fail-on-missed", action="store_true")
     check.set_defaults(func=cmd_check)
+
+    dashboard = sub.add_parser(
+        "dashboard", help="Render a self-contained HTML dashboard."
+    )
+    add_report_args(dashboard)
+    dashboard.add_argument("-o", "--out", help="Output file (default site/index.html).")
+    dashboard.add_argument("--banner", help="Notice shown across the top of the page.")
+    dashboard.add_argument(
+        "--redact-links",
+        action="store_true",
+        help="Keep the fact of a delivery but hide Drive URLs and thread links "
+        "(use when the page is hosted publicly).",
+    )
+    dashboard.add_argument(
+        "--fragment",
+        action="store_true",
+        help="Emit the page without the <html>/<body> wrapper, for embedding.",
+    )
+    dashboard.set_defaults(func=cmd_dashboard)
 
     notify = sub.add_parser("notify", help="Post the digest to a Discord webhook.")
     add_report_args(notify)
