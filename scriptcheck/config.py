@@ -37,6 +37,11 @@ class Config:
     #: Regexes matched against channel names when channel_ids is empty.
     channel_name_patterns: list[str] = field(default_factory=list)
     include_archived: bool = True
+    #: Channels in YOUR OWN server where you forward briefs. Each brief posted
+    #: there becomes an assignment - no access to anyone else's server needed.
+    dropbox_channel_patterns: list[str] = field(default_factory=list)
+    #: Open a thread on each brief so deliveries have somewhere to go.
+    auto_thread: bool = True
     max_messages_per_thread: int = 300
 
     # --- time ---------------------------------------------------------------
@@ -154,6 +159,14 @@ class Config:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    def dropbox_matches(self, name: str, channel_id: str) -> bool:
+        if not self.dropbox_channel_patterns:
+            return False
+        return any(
+            re.search(p, name or "", re.IGNORECASE)
+            for p in self.dropbox_channel_patterns
+        )
 
     def channel_matches(self, name: str, channel_id: str) -> bool:
         if self.channel_ids:

@@ -102,6 +102,65 @@ class LiveBoard:
             messages=messages,
         )
 
+    def _dropbox_channel(self, obj):
+        """The drop-box channel behind a message, if there is one."""
+
+        if obj is None:
+            return None
+        if isinstance(obj, self.dc.Thread):
+            parent = getattr(obj, "parent", None)
+            if parent is not None and self.config.dropbox_matches(
+                getattr(parent, "name", ""), str(parent.id)
+            ):
+                return parent
+            return None
+        name = getattr(obj, "name", "")
+        channel_id = str(getattr(obj, "id", "") or "")
+        if self.config.dropbox_matches(name, channel_id):
+            return obj
+        return None
+
+    def schedule_channel_refresh(self, channel) -> None:
+        """Debounced re-read of a drop-box channel."""
+
+        from .sources.discord_bot import collect_dropbox
+
+        key = f"channel:{channel.id}"
+        existing = self._pending.pop(key, None)
+        if existing:
+            existing.cancel()
+
+        async def later():
+            try:
+                await asyncio.sleep(DEBOUNCE_SECONDS)
+                found = await collect_dropbox(
+                    channel.guild,
+                    channel,
+                    self.config,
+                    create_threads=self.config.auto_thread,
+                )
+                for thread in found:
+                    self.state.upsert(thread)
+                if found:
+                    await self.publish()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("drop-box refresh failed for %s", key)
+            finally:
+                self._pending.pop(key, None)
+
+        self._pending[key] = asyncio.create_task(later())
+
+    def route(self, channel) -> None:
+        """Send an event to whichever refresh path owns that channel."""
+
+        dropbox = self._dropbox_channel(channel)
+        if dropbox is not None:
+            self.schedule_channel_refresh(dropbox)
+        elif isinstance(channel, self.dc.Thread):
+            self.schedule_refresh(channel)
+
     def schedule_refresh(self, thread) -> None:
         """Debounced re-read of one thread."""
 
@@ -358,26 +417,23 @@ class LiveBoard:
 
         @client.event
         async def on_message(message):
-            if isinstance(message.channel, self.dc.Thread):
-                self.schedule_refresh(message.channel)
+            self.route(message.channel)
 
         @client.event
         async def on_message_edit(before, after):
-            if isinstance(after.channel, self.dc.Thread):
-                self.schedule_refresh(after.channel)
+            self.route(after.channel)
 
         @client.event
         async def on_message_delete(message):
-            if isinstance(message.channel, self.dc.Thread):
-                self.schedule_refresh(message.channel)
+            self.route(message.channel)
 
         @client.event
         async def on_thread_create(thread):
-            self.schedule_refresh(thread)
+            self.route(thread)
 
         @client.event
         async def on_thread_update(before, after):
-            self.schedule_refresh(after)
+            self.route(after)
 
         @client.event
         async def on_thread_delete(thread):
@@ -428,7 +484,11 @@ def serve(config: Config, token: Optional[str] = None, host: str = "", port: int
     token = token or os.environ.get("DISCORD_BOT_TOKEN", "")
     if not token:
         raise RuntimeError("No bot token. Set DISCORD_BOT_TOKEN or pass --token.")
-    if not config.channel_ids and not config.channel_name_patterns:
+    if (
+        not config.channel_ids
+        and not config.channel_name_patterns
+        and not config.dropbox_channel_patterns
+    ):
         logging.getLogger("scriptcheck.live").warning(
             "No channel_ids or channel_name_patterns set, so every channel in "
             "the server will be read. Set channel_name_patterns (e.g. "

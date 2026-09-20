@@ -16,6 +16,11 @@ from .config import Config
 #: View Channels + Read Message History. The bot never needs to post.
 READ_ONLY_PERMISSIONS = 66560
 
+#: Drop-box mode adds Create Public Threads + Send Messages in Threads, since
+#: the bot opens a thread on each brief for deliveries to land in. Only ever
+#: used in a server you own.
+DROPBOX_PERMISSIONS = 66560 | (1 << 35) | (1 << 38)
+
 INVITE_TEMPLATE = (
     "https://discord.com/api/oauth2/authorize"
     "?client_id={client_id}&permissions={permissions}&scope=bot"
@@ -113,17 +118,21 @@ def diagnose(facts: Facts, config: Config) -> list[Check]:
 
     # --- can it see the assignment channels ---------------------------------
     if not facts.channels:
-        pattern = ", ".join(config.channel_name_patterns) or "(no filter set)"
-        checks.append(
-            Check(
-                "Assignment channels",
-                FAIL,
-                f"No channel matched {pattern}.",
-                "Either the bot cannot see the channel (ask the admin to grant "
-                "View Channel on that category), or channel_name_patterns does "
-                "not match its name.",
+        if config.dropbox_channel_patterns:
+            pattern = ", ".join(config.dropbox_channel_patterns)
+            fix = (
+                "Make a channel in your own server whose name matches, forward a "
+                "brief into it, and run this again. The bot needs View Channel, "
+                "Read Message History and Create Public Threads there."
             )
-        )
+        else:
+            pattern = ", ".join(config.channel_name_patterns) or "(no filter set)"
+            fix = (
+                "Either the bot cannot see the channel (ask an admin to grant "
+                "View Channel on that category), or channel_name_patterns does "
+                "not match its name."
+            )
+        checks.append(Check("Assignment channels", FAIL, f"No channel matched {pattern}.", fix))
         return checks
 
     visible = [c for c in facts.channels if c.get("can_view")]
@@ -158,7 +167,17 @@ def diagnose(facts: Facts, config: Config) -> list[Check]:
         )
 
     # --- threads -------------------------------------------------------------
-    if facts.threads_seen == 0:
+    if facts.threads_seen == 0 and config.dropbox_channel_patterns:
+        checks.append(
+            Check(
+                "Forwarded briefs",
+                WARN,
+                "The channel is readable but has no threads yet.",
+                "That is expected until you forward your first brief. The bot "
+                "opens a thread on each one it recognises.",
+            )
+        )
+    elif facts.threads_seen == 0:
         checks.append(
             Check(
                 "Threads",

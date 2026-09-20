@@ -13,7 +13,7 @@ from . import __version__
 from .config import Config
 from .audit import render_audit, render_explain
 from .dashboard import render_dashboard
-from .doctor import READ_ONLY_PERMISSIONS, invite_url
+from .doctor import DROPBOX_PERMISSIONS, READ_ONLY_PERMISSIONS, invite_url
 from .engine import build_assignments
 from .models import Status
 from .report import render
@@ -149,14 +149,25 @@ def cmd_doctor(args) -> int:
 
 
 def cmd_invite(args) -> int:
-    url = invite_url(args.client_id, READ_ONLY_PERMISSIONS)
+    dropbox = args.dropbox
+    permissions = DROPBOX_PERMISSIONS if dropbox else READ_ONLY_PERMISSIONS
+    url = invite_url(args.client_id, permissions)
     print()
-    print("Send this to a server admin. It grants read-only access:")
-    print()
-    print(f"  {url}")
-    print()
-    print("  Permissions: View Channels + Read Message History only")
-    print(f"  ({READ_ONLY_PERMISSIONS} - the bot cannot post, edit or delete anything)")
+    if dropbox:
+        print("Open this yourself, on a server YOU own:")
+        print()
+        print(f"  {url}")
+        print()
+        print("  Permissions: View Channels, Read Message History,")
+        print("               Create Public Threads, Send Messages in Threads")
+        print(f"  ({permissions} - it opens a thread on each brief you forward)")
+    else:
+        print("Send this to a server admin. It grants read-only access:")
+        print()
+        print(f"  {url}")
+        print()
+        print("  Permissions: View Channels + Read Message History only")
+        print(f"  ({permissions} - the bot cannot post, edit or delete anything)")
     print()
     print("Then, in the Developer Portal for the same application:")
     print("  Bot -> Privileged Gateway Intents -> enable MESSAGE CONTENT INTENT")
@@ -328,6 +339,12 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.set_defaults(func=cmd_doctor)
 
     invite = sub.add_parser("invite", help="Print the read-only bot invite URL.")
+    invite.add_argument(
+        "--dropbox",
+        action="store_true",
+        help="Permissions for a server you own, where you forward briefs "
+        "(adds thread creation).",
+    )
     invite.add_argument(
         "--client-id",
         required=True,

@@ -12,6 +12,7 @@ import sys
 from typing import Optional
 
 from ..config import Config
+from ..dropbox import collect_from_messages, looks_like_brief
 from ..models import Attachment, Author, Message, Thread
 
 try:  # pragma: no cover - exercised only with the optional dependency present
@@ -32,6 +33,51 @@ def _require_discord():
     return discord
 
 
+def message_text(message) -> str:
+    """All the readable text of a message, forwarded content included.
+
+    Discord's Forward feature sends a message whose own `content` is empty and
+    puts the original text in a snapshot. Reading only `content` would make
+    every forwarded brief look blank, which is the whole input path here.
+    """
+
+    parts: list[str] = []
+    if getattr(message, "content", ""):
+        parts.append(message.content)
+
+    for snapshot in getattr(message, "message_snapshots", None) or []:
+        if getattr(snapshot, "content", ""):
+            parts.append(snapshot.content)
+        parts.extend(_embed_text(getattr(snapshot, "embeds", None) or []))
+
+    parts.extend(_embed_text(getattr(message, "embeds", None) or []))
+    return "\n".join(p for p in parts if p and p.strip())
+
+
+def _embed_text(embeds) -> list[str]:
+    out: list[str] = []
+    for embed in embeds:
+        for attr in ("title", "description"):
+            value = getattr(embed, attr, None)
+            if value:
+                out.append(str(value))
+        for field in getattr(embed, "fields", None) or []:
+            name = getattr(field, "name", "") or ""
+            value = getattr(field, "value", "") or ""
+            if name or value:
+                out.append(f"{name}\n{value}")
+    return out
+
+
+def message_attachments(message) -> list:
+    """Attachments on the message and on anything forwarded with it."""
+
+    found = list(getattr(message, "attachments", None) or [])
+    for snapshot in getattr(message, "message_snapshots", None) or []:
+        found.extend(getattr(snapshot, "attachments", None) or [])
+    return found
+
+
 def _convert_message(message) -> Message:
     return Message(
         id=str(message.id),
@@ -41,13 +87,88 @@ def _convert_message(message) -> Message:
             display_name=getattr(message.author, "display_name", "") or "",
             bot=bool(getattr(message.author, "bot", False)),
         ),
-        content=message.content or "",
+        content=message_text(message),
         created_at=message.created_at,
         edited_at=message.edited_at,
         attachments=[
-            Attachment(filename=a.filename, url=a.url) for a in message.attachments
+            Attachment(filename=a.filename, url=a.url)
+            for a in message_attachments(message)
         ],
         jump_url=message.jump_url,
+    )
+
+
+async def collect_dropbox(guild, channel, config: Config, create_threads: bool = False) -> list[Thread]:
+    """Read one of your own channels where briefs get forwarded.
+
+    A thread created from a message carries that message's ID, which is what
+    links a delivery posted in the thread back to the brief above it.
+    """
+
+    dc = _require_discord()
+    raw = []
+    replies_to: dict[str, str] = {}
+    try:
+        async for message in channel.history(
+            limit=config.max_messages_per_thread, oldest_first=True
+        ):
+            raw.append(message)
+            reference = getattr(message, "reference", None)
+            if reference and getattr(reference, "message_id", None):
+                replies_to[str(message.id)] = str(reference.message_id)
+    except dc.Forbidden:
+        print(f"  ! no access to #{channel.name}", file=sys.stderr)
+        return []
+
+    threads_by_id = {str(t.id): t for t in getattr(channel, "threads", [])}
+    if config.include_archived:
+        try:
+            async for thread in channel.archived_threads(limit=None):
+                threads_by_id[str(thread.id)] = thread
+        except Exception:
+            pass
+
+    thread_messages: dict[str, list[Message]] = {}
+    thread_names: dict[str, str] = {}
+    for message in raw:
+        key = str(message.id)
+        if not looks_like_brief(message_text(message), config):
+            continue
+        existing = threads_by_id.get(key)
+        if existing is None and create_threads:
+            try:
+                from ..dropbox import brief_title
+
+                existing = await message.create_thread(
+                    name=brief_title(message_text(message), config)
+                )
+                print(f"  opened a thread for {existing.name}", file=sys.stderr)
+            except Exception as exc:  # a missing permission must not stop the sync
+                print(f"  ! could not open a thread: {exc}", file=sys.stderr)
+                existing = None
+        if existing is None:
+            continue
+        thread_names[key] = existing.name
+        try:
+            thread_messages[key] = [
+                _convert_message(m)
+                async for m in existing.history(
+                    limit=config.max_messages_per_thread, oldest_first=True
+                )
+            ]
+        except Exception:
+            thread_messages[key] = []
+
+    return collect_from_messages(
+        [_convert_message(m) for m in raw],
+        config,
+        replies_to=replies_to,
+        thread_messages=thread_messages,
+        thread_names=thread_names,
+        channel_name=channel.name,
+        guild_name=guild.name,
+        guild_id=str(guild.id),
+        channel_id=str(channel.id),
     )
 
 
@@ -62,6 +183,18 @@ async def _collect_threads(client, config: Config) -> list[Thread]:
         for channel in guild.channels:
             if not isinstance(channel, (dc.TextChannel, dc.ForumChannel)):
                 continue
+
+            if config.dropbox_matches(channel.name, str(channel.id)):
+                found = await collect_dropbox(
+                    guild, channel, config, create_threads=config.auto_thread
+                )
+                collected.extend(found)
+                print(
+                    f"  read {len(found)} brief(s) from #{channel.name}",
+                    file=sys.stderr,
+                )
+                continue
+
             if not config.channel_matches(channel.name, str(channel.id)):
                 continue
 

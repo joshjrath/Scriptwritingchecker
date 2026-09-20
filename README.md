@@ -190,6 +190,7 @@ too; `tests/make_fixture.py` is a runnable example of it.
 
 ```bash
 python -m scriptcheck invite --client-id ID  # print the read-only invite URL
+python -m scriptcheck invite --client-id ID --dropbox   # for a server you own
 python -m scriptcheck doctor                 # prove the bot can see everything
 python -m scriptcheck serve                  # LIVE: gateway + web server
 python -m scriptcheck fetch                  # pull threads from Discord -> data/threads.json
@@ -208,6 +209,48 @@ python -m scriptcheck notify --only-if-action             # post the digest to a
 
 `report --fail-on-missed` exits `2` when anything is overdue or was delivered
 late, so it can gate a cron job or CI step.
+
+## Drop-box mode (no access to their server)
+
+If the server you write for will not host a bot — a normal answer, and not one
+worth arguing with — nothing here needs their permission. The bot lives in a
+server **you** own and never touches theirs.
+
+When an assignment lands, **forward the brief** into your own channel. One tap
+on mobile. The bot recognises it, opens a thread on it, and from that moment the
+deadline, the countdown, the 24h and 2h reminders and the board all work exactly
+as they do in the connected version. Post your Drive link in that thread and it
+flips to Delivered.
+
+Two taps per assignment instead of none. Everything else is unchanged.
+
+```bash
+python -m scriptcheck invite --client-id <APPLICATION_ID> --dropbox
+```
+
+That grants View Channels, Read Message History, **Create Public Threads** and
+Send Messages in Threads — the extra two only so it can open the thread your
+delivery goes in. You open the link yourself; nobody else is involved.
+
+```json
+{
+  "dropbox_channel_patterns": ["my-assignments"],
+  "auto_thread": true,
+  "my_roles": ["SCRIPT"]
+}
+```
+
+Any channel whose name matches is read in drop-box mode: each message that
+parses as a brief becomes an assignment, and anything you post in its thread —
+or as a reply to it — is a follow-up. Chat that is not a brief is ignored, so a
+stray "thanks!" never becomes a tracked assignment with no deadline.
+
+**Forwarded messages arrive with empty `content`** — Discord puts the original
+text in a snapshot — so the text, embeds and attachments of a forward are all
+read explicitly. Reading only `content` would make every forwarded brief look
+blank, which is the one thing that would quietly break this whole path.
+
+Pasting a brief in as text works identically, if forwarding ever mangles one.
 
 ## Real time
 
@@ -474,6 +517,8 @@ embedding in a host that supplies its own document shell.
 | `guild_ids` / `channel_ids` | `[]` | Restrict the fetch. |
 | `channel_name_patterns` | `[]` | Regexes matched against channel names when no IDs are given. |
 | `include_archived` | `true` | Also walk archived threads. |
+| `dropbox_channel_patterns` | `[]` | Channels in your own server where you forward briefs. |
+| `auto_thread` | `true` | Open a thread on each forwarded brief. |
 | `max_messages_per_thread` | `300` | Fetch depth per thread. |
 | `default_timezone` | `America/New_York` | Assumed when a deadline gives no timezone. |
 | `preferred_timezones` | `["America/New_York"]` | Which spelling of a multi-timezone deadline to quote. |
@@ -499,7 +544,7 @@ embedding in a host that supplies its own document shell.
 python -m unittest discover -s tests -t .
 ```
 
-135 tests cover title and deadline parsing (including the two-timezone briefs,
+157 tests cover title and deadline parsing (including the two-timezone briefs,
 Discord `<t:…>` timestamps, date-only deadlines and month-name dates), role-section
 assignment, link detection, every status transition, the report formats, and the
 dashboard's data embedding (including that a thread title cannot break out of the
@@ -510,4 +555,6 @@ unreadable channel, the message-content intent being off) against synthetic fact
 so the diagnosis is verified without a live connection. The live daemon is covered
 too: alert timing and once-only firing against a moving clock, and the HTTP surface
 (auth gate, health, JSON, and a real SSE push reaching a connected client) driven
-through aiohttp's test server, with no Discord involved.
+through aiohttp's test server, with no Discord involved. Drop-box mode is covered
+end to end, including that a forwarded message's text, embeds and attachments are
+read out of its snapshot rather than its empty body.
