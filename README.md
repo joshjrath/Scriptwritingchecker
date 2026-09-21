@@ -393,6 +393,27 @@ a 256MB process that idles at almost nothing.
 | **Any VPS / Render paid tier** | `Dockerfile` included, health check wired to `/healthz`. |
 | **Render free tier, or anything that sleeps on idle** | won't work — a sleeping process is a disconnected bot. |
 
+### Sharing the board with a team
+
+Two tokens, two levels:
+
+| | |
+| --- | --- |
+| `SCRIPTCHECK_ACCESS_TOKEN` | yours. Full board, the *mark delivered* buttons, `/audit` and `/explain`. |
+| `SCRIPTCHECK_VIEW_TOKEN` | the link you hand out. Same board, read-only: no buttons, no writes, and no `/audit` or `/explain` (those quote the briefs back in full). |
+
+```
+https://your-host/?k=<view token>
+```
+
+A viewer's page says *Read-only view* across the top, and their event stream is
+served its own payload, so a later push never hands them edit rights. Everything
+else — countdowns, statuses, live updates — is identical.
+
+Both tokens are generated for you by `scriptcheck setup`. To rotate the shared
+one, change `SCRIPTCHECK_VIEW_TOKEN` and restart; old links stop working
+immediately and yours is unaffected.
+
 **Lock it down.** Unlike the GitHub Pages build, this board is a live URL with
 client titles, deadlines and Drive links on it. Set `SCRIPTCHECK_ACCESS_TOKEN`
 and reach it at `/?k=<token>` — the token is then remembered in a cookie, and
@@ -574,7 +595,8 @@ embedding in a host that supplies its own document shell.
 | `accept_any_author` | `false` | Count a link from anyone, not just you. |
 | `done_tags` / `ignore_tags` | see config | Forum tags treated as delivered / skipped. |
 | `webhook_url` | `""` | Where `notify` and live alerts post. |
-| `access_token` | `""` | Shared secret for the live board; empty means open. |
+| `access_token` | `""` | Your own secret for the live board; empty means open. |
+| `view_token` | `""` | Read-only secret to share with a team. |
 | `serve_host` / `serve_port` | `0.0.0.0` / `8080` | Where `serve` binds. |
 | `resync_minutes` | `15` | Safety-net full resync in live mode. |
 | `reminder_lead_hours` | `[24, 2]` | How far ahead of a deadline to ping. |
@@ -588,7 +610,7 @@ embedding in a host that supplies its own document shell.
 python -m unittest discover -s tests -t .
 ```
 
-167 tests cover title and deadline parsing (including the two-timezone briefs,
+195 tests cover title and deadline parsing (including the two-timezone briefs,
 Discord `<t:…>` timestamps, date-only deadlines and month-name dates), role-section
 assignment, link detection, every status transition, the report formats, and the
 dashboard's data embedding (including that a thread title cannot break out of the

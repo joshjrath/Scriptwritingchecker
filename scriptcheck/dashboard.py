@@ -48,6 +48,7 @@ def build_payload(
     banner: str = "",
     redact_links: bool = False,
     live: bool = False,
+    can_edit: bool = True,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
     rows = []
@@ -68,6 +69,7 @@ def build_payload(
         "banner": banner,
         "roles": list(config.my_roles),
         "live": live,
+        "can_edit": can_edit,
         "assignments": rows,
     }
 
@@ -81,9 +83,10 @@ def render_dashboard(
     redact_links: bool = False,
     fragment: bool = False,
     live: bool = False,
+    can_edit: bool = True,
 ) -> str:
     payload = build_payload(
-        assignments, config, now, fetched_at, banner, redact_links, live
+        assignments, config, now, fetched_at, banner, redact_links, live, can_edit
     )
     data = json.dumps(payload, ensure_ascii=False)
     # </script> inside embedded JSON would close the tag early.

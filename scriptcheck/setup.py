@@ -40,17 +40,23 @@ def build_env(
     user_id: str,
     webhook: str = "",
     access_token: str = "",
+    view_token: str = "",
 ) -> str:
     """The .env file contents. Pure, so the format is testable."""
 
     access_token = access_token or secrets.token_urlsafe(24)
+    view_token = view_token or secrets.token_urlsafe(24)
     return "\n".join(
         [
             "# Written by `scriptcheck setup`. Keep this file private.",
             f"DISCORD_BOT_TOKEN={token}",
             f"SCRIPTCHECK_MY_USER_ID={user_id}",
             f"SCRIPTCHECK_WEBHOOK_URL={webhook}",
+            "",
+            "# Your own link. Full control.",
             f"SCRIPTCHECK_ACCESS_TOKEN={access_token}",
+            "# The link you hand the team. They can look, not touch.",
+            f"SCRIPTCHECK_VIEW_TOKEN={view_token}",
             "",
         ]
     )
@@ -164,7 +170,11 @@ def run(env_path: Path = Path(".env"), config_path: Path = Path("scriptcheck.con
     webhook = ask_optional("Webhook URL")
 
     # --- write --------------------------------------------------------------
-    env_path.write_text(build_env(token, user_id, webhook, existing_access))
+    env_path.write_text(
+        build_env(
+            token, user_id, webhook, existing_access, read_env_value(env_path, "SCRIPTCHECK_VIEW_TOKEN")
+        )
+    )
     try:
         env_path.chmod(0o600)
     except OSError:
@@ -173,13 +183,18 @@ def run(env_path: Path = Path(".env"), config_path: Path = Path("scriptcheck.con
     Path("data").mkdir(exist_ok=True)
 
     access = read_env_value(env_path, "SCRIPTCHECK_ACCESS_TOKEN")
+    view = read_env_value(env_path, "SCRIPTCHECK_VIEW_TOKEN")
 
     heading("Done")
     print(f"  {_colour('wrote', GREEN)} {env_path}   {_colour('(your token - never commit this)', DIM)}")
     print(f"  {_colour('wrote', GREEN)} {config_path}")
     print()
-    print("Your board will be at:")
+    print("Your board (full control):")
     print("  " + _colour(f"http://localhost:8080/?k={access}", GREEN))
+    print()
+    print("Read-only link for teammates:")
+    print("  " + _colour(f"http://localhost:8080/?k={view}", GREEN))
+    print(_colour("  (works once it is hosted - localhost only reaches this Mac)", DIM))
     print()
 
     # --- check --------------------------------------------------------------

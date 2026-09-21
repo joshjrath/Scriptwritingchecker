@@ -52,9 +52,13 @@ class LiveBoard:
         self.tracker = AlertTracker(
             lead_hours=config.reminder_lead_hours, kinds=config.alert_kinds
         )
-        self.subscribers: set = set()
+        # queue -> can_edit, so a viewer's stream never carries an owner payload
+        self.subscribers: dict = {}
         self.access_token = config.access_token or os.environ.get(
             "SCRIPTCHECK_ACCESS_TOKEN", ""
+        )
+        self.view_token = config.view_token or os.environ.get(
+            "SCRIPTCHECK_VIEW_TOKEN", ""
         )
         self._pending: dict[str, asyncio.Task] = {}
         self.dc, self.web, self.aiohttp = _require()
@@ -204,15 +208,19 @@ class LiveBoard:
 
     async def publish(self) -> None:
         payload = self.state.payload()
-        data = json.dumps(payload, ensure_ascii=False)
+        variants = {}
+        for can_edit in (True, False):
+            payload["can_edit"] = can_edit
+            variants[can_edit] = json.dumps(payload, ensure_ascii=False)
+
         dead = []
-        for queue in list(self.subscribers):
+        for queue, can_edit in list(self.subscribers.items()):
             try:
-                queue.put_nowait(data)
+                queue.put_nowait(variants[bool(can_edit)])
             except asyncio.QueueFull:
                 dead.append(queue)
         for queue in dead:
-            self.subscribers.discard(queue)
+            self.subscribers.pop(queue, None)
 
     async def send_alerts(self, alerts) -> None:
         body = format_digest(alerts)
@@ -271,11 +279,14 @@ class LiveBoard:
             self.config,
             fetched_at=self.state.last_sync.isoformat() if self.state.last_sync else "",
             live=True,
+            can_edit=request.get("role", "owner") == "owner",
         )
         return self.web.Response(text=html, content_type="text/html")
 
     async def handle_report(self, request):
-        return self.web.json_response(self.state.payload())
+        payload = self.state.payload()
+        payload["can_edit"] = request.get("role", "owner") == "owner"
+        return self.web.json_response(payload)
 
     async def handle_audit(self, request):
         """The parse audit as plain text, readable on a phone."""
@@ -384,12 +395,15 @@ class LiveBoard:
             }
         )
         await response.prepare(request)
+        can_edit = request.get("role", "owner") == "owner"
         queue: asyncio.Queue = asyncio.Queue(maxsize=8)
-        self.subscribers.add(queue)
+        self.subscribers[queue] = can_edit
         try:
+            opening = self.state.payload()
+            opening["can_edit"] = can_edit
             await response.write(
                 b"event: board\ndata: "
-                + json.dumps(self.state.payload(), ensure_ascii=False).encode()
+                + json.dumps(opening, ensure_ascii=False).encode()
                 + b"\n\n"
             )
             while True:
@@ -402,30 +416,51 @@ class LiveBoard:
         except (asyncio.CancelledError, ConnectionResetError):
             pass
         finally:
-            self.subscribers.discard(queue)
+            self.subscribers.pop(queue, None)
         return response
+
+    #: Paths a read-only viewer never reaches. /audit and /explain quote the
+    #: briefs back in full, which is more than a status board should share.
+    OWNER_ONLY_PATHS = ("/audit", "/explain")
+
+    def _role_for(self, supplied: str) -> Optional[str]:
+        if self.access_token and supplied == self.access_token:
+            return "owner"
+        if self.view_token and supplied == self.view_token:
+            return "viewer"
+        return None
 
     def _auth_middleware(self):
         web = self.web
 
         @web.middleware
         async def guard(request, handler):
-            if not self.access_token:
+            if not self.access_token and not self.view_token:
+                request["role"] = "owner"
                 return await handler(request)
             # Health probes must work without the secret, and they expose
             # nothing but liveness.
             if request.path == "/healthz":
                 return await handler(request)
-            supplied = request.query.get("k") or request.cookies.get(COOKIE)
-            if supplied != self.access_token:
+
+            supplied = request.query.get("k") or request.cookies.get(COOKIE) or ""
+            role = self._role_for(supplied)
+            if role is None:
                 # Say "not found" rather than "forbidden": an unauthenticated
                 # visitor learns nothing about what is here.
                 return web.Response(status=404, text="Not found")
+
+            if role == "viewer" and (
+                request.method != "GET" or request.path in self.OWNER_ONLY_PATHS
+            ):
+                return web.Response(status=404, text="Not found")
+
+            request["role"] = role
             response = await handler(request)
             if request.query.get("k") and not response.prepared:
                 response.set_cookie(
                     COOKIE,
-                    self.access_token,
+                    supplied,
                     httponly=True,
                     samesite="Lax",
                     max_age=60 * 60 * 24 * 365,

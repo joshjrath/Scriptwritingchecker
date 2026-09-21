@@ -948,6 +948,7 @@
 
   function markButton(item) {
     if (!DATA.live) return null;
+    if (DATA.can_edit === false) return null;   // read-only share link
     var done = item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE";
     if (done && !markedByHand(item)) return null;  // detected on its own
 
@@ -1401,9 +1402,13 @@
       fresh.hidden = true;
     }
 
-    if (DATA.banner) {
+    var notice = DATA.banner || "";
+    if (DATA.can_edit === false) {
+      notice = notice ? notice + " \u00b7 read-only view" : "Read-only view";
+    }
+    if (notice) {
       var banner = document.getElementById("banner");
-      banner.textContent = DATA.banner;
+      banner.textContent = notice;
       banner.hidden = false;
     }
 

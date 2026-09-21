@@ -424,3 +424,39 @@ class TestDropboxPreflight(unittest.TestCase):
         facts = self.facts(threads_seen=1, messages_sampled=3, messages_with_content=3)
         checks = diagnose(facts, self.CONFIG)
         self.assertTrue(all(c.status == PASS for c in checks), [c.name for c in checks if c.status != PASS])
+
+
+class TestShareTokens(unittest.TestCase):
+    def test_setup_generates_two_distinct_tokens(self):
+        from scriptcheck.setup import build_env
+
+        text = build_env("tok", "123")
+        lines = dict(
+            line.split("=", 1) for line in text.splitlines() if "=" in line and not line.startswith("#")
+        )
+        self.assertGreaterEqual(len(lines["SCRIPTCHECK_ACCESS_TOKEN"]), 20)
+        self.assertGreaterEqual(len(lines["SCRIPTCHECK_VIEW_TOKEN"]), 20)
+        self.assertNotEqual(
+            lines["SCRIPTCHECK_ACCESS_TOKEN"], lines["SCRIPTCHECK_VIEW_TOKEN"]
+        )
+
+    def test_existing_tokens_are_preserved_on_a_re_run(self):
+        from scriptcheck.setup import build_env
+
+        text = build_env("tok", "123", "", "keep-owner", "keep-view")
+        self.assertIn("SCRIPTCHECK_ACCESS_TOKEN=keep-owner", text)
+        self.assertIn("SCRIPTCHECK_VIEW_TOKEN=keep-view", text)
+
+    def test_the_view_token_reaches_the_config(self):
+        import os
+
+        from scriptcheck.config import Config
+
+        saved = os.environ.get("SCRIPTCHECK_VIEW_TOKEN")
+        os.environ["SCRIPTCHECK_VIEW_TOKEN"] = "team-link"
+        try:
+            self.assertEqual(Config.load().view_token, "team-link")
+        finally:
+            os.environ.pop("SCRIPTCHECK_VIEW_TOKEN", None)
+            if saved is not None:
+                os.environ["SCRIPTCHECK_VIEW_TOKEN"] = saved

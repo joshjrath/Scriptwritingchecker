@@ -113,6 +113,9 @@ class Config:
     #: Shared secret for the live board. Empty means anyone with the URL can
     #: read it; set it here or as $SCRIPTCHECK_ACCESS_TOKEN.
     access_token: str = ""
+    #: A second token that can look but not touch. Share this one with the
+    #: team; keep access_token for yourself.
+    view_token: str = ""
     serve_host: str = "0.0.0.0"
     serve_port: int = 8080
     #: Safety net for events missed during a gateway reconnect.
@@ -188,6 +191,9 @@ class Config:
         token = os.environ.get("SCRIPTCHECK_ACCESS_TOKEN")
         if token:
             self.access_token = token
+        view = os.environ.get("SCRIPTCHECK_VIEW_TOKEN")
+        if view:
+            self.view_token = view
         user_id = os.environ.get("SCRIPTCHECK_MY_USER_ID")
         if user_id and user_id not in self.my_user_ids:
             self.my_user_ids.append(user_id)

@@ -350,3 +350,76 @@ class TestMarkDelivered(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await client.post("/mark", json={"thread_id": "1003"})).status, 404)
         finally:
             await client.close()
+
+
+class TestShareLink(unittest.IsolatedAsyncioTestCase):
+    """A view token lets the team look without touching anything."""
+
+    async def asyncSetUp(self):
+        import tempfile
+
+        self.overrides = Path(tempfile.mkdtemp()) / "overrides.json"
+        config = Config(
+            my_user_ids=["111111111111111111"],
+            my_roles=["SCRIPT"],
+            access_token="owner-secret",
+            view_token="team-link",
+            overrides_file=str(self.overrides),
+        )
+        self.board = LiveBoard(config, token="x", host="127.0.0.1", port=0)
+        self.board.state.replace_all(load_threads(FIXTURE))
+        self.client = TestClient(TestServer(self.board.build_app()))
+        await self.client.start_server()
+
+    async def asyncTearDown(self):
+        await self.client.close()
+
+    async def test_the_view_token_opens_the_board(self):
+        response = await self.client.get("/?k=team-link")
+        self.assertEqual(response.status, 200)
+        self.assertIn("Script Board", await response.text())
+
+    async def test_a_viewer_cannot_mark_anything_delivered(self):
+        response = await self.client.post(
+            "/mark?k=team-link", json={"thread_id": "1003"}
+        )
+        self.assertEqual(response.status, 404)
+        self.assertFalse(self.overrides.exists())
+
+    async def test_a_viewer_cannot_read_the_briefs_back_in_full(self):
+        # /audit and /explain quote the whole opening post.
+        self.assertEqual((await self.client.get("/audit?k=team-link")).status, 404)
+        self.assertEqual((await self.client.get("/explain?k=team-link&q=Sans")).status, 404)
+
+    async def test_the_owner_keeps_everything(self):
+        self.assertEqual((await self.client.get("/audit?k=owner-secret")).status, 200)
+        response = await self.client.post(
+            "/mark?k=owner-secret", json={"thread_id": "1003"}
+        )
+        self.assertEqual(response.status, 200)
+
+    async def test_the_payload_says_which_role_it_is_for(self):
+        owner = await (await self.client.get("/report.json?k=owner-secret")).json()
+        self.assertTrue(owner["can_edit"])
+        viewer = await (await self.client.get("/report.json?k=team-link")).json()
+        self.assertFalse(viewer["can_edit"])
+        # Same assignments either way; only the permissions differ.
+        self.assertEqual(len(owner["assignments"]), len(viewer["assignments"]))
+
+    async def test_a_pushed_update_keeps_each_stream_in_its_own_role(self):
+        viewer = await self.client.get("/events?k=team-link")
+        first = await asyncio.wait_for(viewer.content.readuntil(b"\n\n"), timeout=5)
+        self.assertFalse(json.loads(first.decode().split("data: ", 1)[1])["can_edit"])
+
+        self.board.state.remove("1001")
+        await self.board.publish()
+
+        pushed = await asyncio.wait_for(viewer.content.readuntil(b"\n\n"), timeout=5)
+        payload = json.loads(pushed.decode().split("data: ", 1)[1])
+        self.assertFalse(payload["can_edit"], "a viewer must not be handed edit rights")
+        self.assertEqual(len(payload["assignments"]), 6)
+        viewer.close()
+
+    async def test_a_wrong_token_still_reveals_nothing(self):
+        self.assertEqual((await self.client.get("/?k=guessing")).status, 404)
+        self.assertEqual((await self.client.get("/")).status, 404)
