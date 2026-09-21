@@ -423,3 +423,26 @@ class TestShareLink(unittest.IsolatedAsyncioTestCase):
     async def test_a_wrong_token_still_reveals_nothing(self):
         self.assertEqual((await self.client.get("/?k=guessing")).status, 404)
         self.assertEqual((await self.client.get("/")).status, 404)
+
+
+class TestFavicon(unittest.IsolatedAsyncioTestCase):
+    async def test_the_tab_icon_does_not_log_a_404(self):
+        board = LiveBoard(CONFIG, token="x", host="127.0.0.1", port=0)
+        client = TestClient(TestServer(board.build_app()))
+        await client.start_server()
+        try:
+            self.assertEqual((await client.get("/favicon.ico")).status, 204)
+        finally:
+            await client.close()
+
+    async def test_it_is_answered_even_behind_a_token(self):
+        config = Config(access_token="s3cret", overrides_file="/nonexistent-overrides.json")
+        board = LiveBoard(config, token="x", host="127.0.0.1", port=0)
+        client = TestClient(TestServer(board.build_app()))
+        await client.start_server()
+        try:
+            # The browser asks for it without the token in the URL.
+            self.assertEqual((await client.get("/favicon.ico")).status, 204)
+            self.assertEqual((await client.get("/")).status, 404)
+        finally:
+            await client.close()

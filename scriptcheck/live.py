@@ -372,6 +372,15 @@ class LiveBoard:
         await self.publish()
         return self.web.json_response({"ok": True, "thread_id": thread_id, "undo": undo})
 
+    async def handle_favicon(self, request):
+        """Browsers ask every page for a tab icon; answer quietly.
+
+        Without this the access log fills with 404s for a file nobody asked
+        for, which reads like a broken board when it is nothing of the sort.
+        """
+
+        return self.web.Response(status=204)
+
     async def handle_health(self, request):
         ready = bool(self.client and self.client.is_ready())
         body = {
@@ -440,7 +449,7 @@ class LiveBoard:
                 return await handler(request)
             # Health probes must work without the secret, and they expose
             # nothing but liveness.
-            if request.path == "/healthz":
+            if request.path in ("/healthz", "/favicon.ico"):
                 return await handler(request)
 
             supplied = request.query.get("k") or request.cookies.get(COOKIE) or ""
@@ -478,6 +487,7 @@ class LiveBoard:
         app.router.add_get("/explain", self.handle_explain)
         app.router.add_get("/events", self.handle_events)
         app.router.add_get("/healthz", self.handle_health)
+        app.router.add_get("/favicon.ico", self.handle_favicon)
         return app
 
     # --- wiring --------------------------------------------------------------
