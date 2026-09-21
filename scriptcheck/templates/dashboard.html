@@ -197,10 +197,29 @@
   .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
   /* The logo keeps its own purple in either theme - a mark that restates the
      page's accent variable is a swatch, not a brand. */
+  /* A supplied logo replaces the drawn mark entirely - no border, no stripes,
+     no background tinting whatever it is. */
+  img.mark {
+    background: none;
+    border: 0;
+    box-shadow: none;
+    border-radius: 7px;
+  }
   .mark {
     flex: none;
     display: block;
     width: 32px; height: 32px;
+    border-radius: 8px;
+    object-fit: contain;
+    background:
+      repeating-linear-gradient(118deg,
+        color-mix(in srgb, var(--accent) 85%, transparent) 0 7px,
+        transparent 7px 14px),
+      linear-gradient(150deg,
+        color-mix(in srgb, var(--accent) 30%, transparent),
+        transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    box-shadow: inset 0 1px 0 var(--gloss);
   }
   h1 {
     font-family: var(--font-display);
@@ -327,11 +346,11 @@
   }
   .hero.calm .timecode { font-size: clamp(22px, 3.6vw, 30px); }
 
-  /* ---------- runway ---------- */
-  /* One dial per open script. The arc is how much of the window from brief to
-     deadline has already gone, so a nearly-closed ring means nearly out of
-     time - readable before any number is. */
-  .runway { padding: 18px 20px 20px; }
+  /* ---------- workload chart ---------- */
+  /* Columns of words due per day. The x position already carries urgency, so
+     colour is spent on one distinction only - late versus ahead - rather than
+     re-encoding what the axis says. */
+  .runway { padding: 18px 20px 16px; }
   .runway-head {
     display: flex;
     align-items: baseline;
@@ -346,98 +365,157 @@
     color: var(--muted);
   }
 
-  .dials {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
-    gap: 10px;
-    margin-top: 16px;
+  .chart { display: flex; gap: 10px; margin-top: 18px; position: relative; }
+  .chart-y {
+    position: relative;
+    width: 34px;
+    flex: none;
+    height: 132px;
   }
-
-  .dial {
+  .ytick {
+    position: absolute;
+    right: 0;
+    transform: translateY(50%);
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .plot-wrap { flex: 1; min-width: 0; }
+  .plot {
+    position: relative;
+    height: 132px;
     display: flex;
+    align-items: flex-end;
+    gap: 2px;                 /* the surface gap between adjacent columns */
+  }
+  .gridline {
+    position: absolute;
+    left: 0; right: 0;
+    height: 1px;
+    background: var(--stroke);
+  }
+  .gridline.base { background: var(--stroke-2); }
+
+  .col {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
     align-items: center;
-    gap: 13px;
-    padding: 12px 14px;
-    border-radius: 14px;
-    background: var(--panel-2);
-    border: 1px solid var(--stroke);
-    text-align: left;
+    background: none;
+    border: 0;
+    padding: 0;
     font: inherit;
     color: inherit;
-    cursor: pointer;
-    appearance: none;
-    transition: transform .12s ease, border-color .12s ease;
+    cursor: default;
   }
-  .dial:hover {
-    transform: translateY(-2px);
-    border-color: color-mix(in srgb, var(--tone) 55%, var(--stroke));
+  .col.has-work { cursor: pointer; }
+  .stack {
+    width: 100%;
+    max-width: 22px;          /* bars stay thin; the band keeps its air */
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 2px;                 /* the surface gap between stacked scripts */
+    justify-content: flex-end;
   }
-  .dial.done { opacity: .62; }
-
-  .ring { flex: none; width: 54px; height: 54px; }
-  .ring-bg {
-    fill: none;
-    stroke: var(--stroke);
-    stroke-width: 5;
+  .seg {
+    background: var(--tone, var(--accent));
+    min-height: 3px;
+    border-radius: 0;
   }
-  .ring-fg {
-    fill: none;
-    stroke: var(--tone);
-    stroke-width: 5;
-    stroke-linecap: round;
-    transition: stroke-dashoffset .5s ease;
+  .stack .seg:last-child {    /* the data-end, at the top of the column */
+    border-radius: 4px 4px 0 0;
   }
-  .ring-label {
+  .col:hover .stack { filter: brightness(1.15); }
+  .col-cap {
+    position: absolute;
+    bottom: calc(100% + 0px);
     font-family: var(--font-mono);
-    font-size: 15px;
-    font-weight: 500;
-    fill: var(--tone);
+    font-size: 9.5px;
+    color: var(--ink-2);
+    white-space: nowrap;
   }
-  .ring-label.small { font-size: 12px; }
 
-  .dial-body { min-width: 0; }
-  .dial-title {
-    font-size: 13.5px;
-    font-weight: 500;
-    line-height: 1.3;
-    color: var(--ink);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+  .xrow {
+    display: flex;
+    gap: 2px;
+    margin-top: 7px;
+  }
+  .xlabel {
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: .02em;
+    color: var(--muted);
+    white-space: nowrap;
     overflow: hidden;
   }
-  .dial-meta {
+  .xlabel.today { color: var(--accent); font-weight: 600; }
+  .xlabel.late { color: var(--critical); }
+
+  .legend {
     display: flex;
-    align-items: center;
-    gap: 7px;
-    margin-top: 5px;
+    gap: 14px;
+    margin-top: 12px;
+    flex-wrap: wrap;
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: .04em;
     color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
-  .dial-project {
-    text-transform: uppercase;
-    color: var(--ink-2);
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i {
+    width: 9px; height: 9px;
+    border-radius: 2px;
+    background: var(--tone);
+  }
+
+  .charttip {
+    position: absolute;
+    z-index: 6;
+    pointer-events: none;
+    transform: translate(-50%, -100%);
+    background: var(--panel-2);
     border: 1px solid var(--stroke-2);
-    border-radius: 4px;
-    padding: 1px 5px;
+    border-radius: 9px;
+    padding: 8px 11px;
+    min-width: 150px;
+    max-width: 250px;
+    box-shadow: var(--shade);
+  }
+  .charttip b {
+    display: block;
+    font-size: 11.5px;
+    color: var(--ink);
+    margin-bottom: 5px;
+  }
+  .charttip ul { margin: 0; padding: 0; list-style: none; }
+  .charttip li {
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--ink-2);
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .charttip li span {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
     flex: none;
   }
-  .dial-when { color: var(--tone); }
 
   .runway-empty {
     font-size: 13px;
     color: var(--muted);
     padding: 22px 0 14px;
     text-align: center;
-  }
-
-  @media (max-width: 460px) {
-    .dials { grid-template-columns: 1fr; }
   }
 
   /* ---------- tiles ---------- */
@@ -772,12 +850,12 @@
 
   <section class="hero glass" id="hero" aria-label="Next deadline"></section>
 
-  <section class="runway glass" aria-label="Deadline runway">
+  <section class="runway glass" aria-label="Scripts due over the next two weeks">
     <div class="runway-head">
-      <p class="eyebrow">Deadline runway</p>
+      <p class="eyebrow">Scripts due</p>
       <span class="runway-note" id="runway-note"></span>
     </div>
-    <div class="dials" id="track"></div>
+    <div class="chart" id="track"></div>
   </section>
 
   <section class="tiles" id="tiles" aria-label="Status summary"></section>
@@ -1124,52 +1202,29 @@
 
   /* ---------- runway ---------- */
 
-  /* A short form for the middle of a dial: "8d", "22h", "45m". */
-  function compact(ms) {
-    var s = Math.abs(Math.round(ms / 1000));
-    if (s >= 86400) return Math.floor(s / 86400) + "d";
-    if (s >= 3600) return Math.floor(s / 3600) + "h";
-    return Math.max(1, Math.floor(s / 60)) + "m";
+  /* ---------- workload chart ---------- */
+
+  var dayKeyFmt = makeFmt({ year: "numeric", month: "2-digit", day: "2-digit" }, true);
+
+  function dayKey(date) {
+    // en-CA style parts give a sortable key in the board's own timezone, so a
+    // deadline at 11:59 PM belongs to the day it is actually due.
+    var parts = {};
+    dayKeyFmt.formatToParts(date).forEach(function (p) { parts[p.type] = p.value; });
+    return parts.year + "-" + parts.month + "-" + parts.day;
   }
 
-  var RING_R = 23;
-  var RING_C = 2 * Math.PI * RING_R;
+  /* Counts are small integers, so the axis is too: never a "2.5 scripts" tick. */
+  function axisTicks(max) {
+    var step = max <= 5 ? 1 : Math.ceil(max / 4);
+    var ticks = [];
+    for (var v = 0; v <= max; v += step) ticks.push(v);
+    if (ticks[ticks.length - 1] !== max) ticks.push(max);
+    return ticks;
+  }
 
-  function ring(fraction, label, tone) {
-    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 54 54");
-    svg.setAttribute("class", "ring");
-    svg.setAttribute("aria-hidden", "true");
-
-    function circle(cls) {
-      var c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      c.setAttribute("cx", "27");
-      c.setAttribute("cy", "27");
-      c.setAttribute("r", String(RING_R));
-      c.setAttribute("class", cls);
-      return c;
-    }
-    svg.appendChild(circle("ring-bg"));
-
-    var fg = circle("ring-fg");
-    fg.setAttribute("stroke-dasharray", RING_C.toFixed(1));
-    fg.setAttribute(
-      "stroke-dashoffset",
-      (RING_C * (1 - Math.max(0.02, Math.min(1, fraction)))).toFixed(1)
-    );
-    // Start the arc at twelve o'clock rather than three.
-    fg.setAttribute("transform", "rotate(-90 27 27)");
-    svg.appendChild(fg);
-
-    var text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.setAttribute("x", "27");
-    text.setAttribute("y", "27");
-    text.setAttribute("text-anchor", "middle");
-    text.setAttribute("dominant-baseline", "central");
-    text.setAttribute("class", "ring-label" + (label.length > 3 ? " small" : ""));
-    text.textContent = label;
-    svg.appendChild(text);
-    return svg;
+  function plural(n, word) {
+    return n + " " + word + (n === 1 ? "" : "s");
   }
 
   function renderRunway(now) {
@@ -1181,65 +1236,167 @@
       return i.live !== "NOT_MINE" && i.live !== "IGNORED";
     });
     var open = mine.filter(function (i) {
-      return i.live !== "SUBMITTED" && i.live !== "SUBMITTED_LATE";
+      return i.live !== "SUBMITTED" && i.live !== "SUBMITTED_LATE" && i.deadline;
     });
-    var delivered = mine.length - open.length;
-
-    note.textContent = open.length
-      ? open.length + " open" + (delivered ? " \u00b7 " + delivered + " delivered" : "")
-      : (delivered ? delivered + " delivered" : "");
+    var noDate = mine.filter(function (i) { return !i.deadline && i.live !== "SUBMITTED" && i.live !== "SUBMITTED_LATE"; }).length;
 
     if (!open.length) {
+      note.textContent = noDate ? noDate + " without a deadline" : "";
       host.appendChild(
-        el("p", "runway-empty", "Nothing open. Everything with a deadline is delivered.")
+        el("p", "runway-empty", "Nothing outstanding with a deadline on it.")
       );
       return;
     }
 
-    var nowMs = +now;
-    sorted(open).forEach(function (item) {
-      var tone = META[item.live].tone;
-      var card = el("button", "dial");
-      card.type = "button";
-      card.style.setProperty("--tone", tone);
+    var words = 0;
+    open.forEach(function (i) { words += i.word_count || 0; });
+    note.textContent =
+      plural(open.length, "script") + " open" +
+      (words ? " \u00b7 " + (words >= 1000 ? Math.round(words / 1000) + "k" : words) + " words" : "") +
+      (noDate ? " \u00b7 " + noDate + " undated" : "");
 
-      var fraction = 1;
-      var label = "\u2014";
-      if (item.deadline) {
-        var deadlineMs = +new Date(item.deadline);
-        var startedMs = item.assigned_at ? +new Date(item.assigned_at) : NaN;
-        // Without a start, assume the usual week-long window so the dial
-        // still means something rather than showing a full ring.
-        if (isNaN(startedMs) || startedMs >= deadlineMs) {
-          startedMs = deadlineMs - 7 * DAY;
-        }
-        var elapsed = (nowMs - startedMs) / (deadlineMs - startedMs);
-        fraction = Math.max(0, Math.min(1, elapsed));
-        label = compact(deadlineMs - nowMs);
-      } else {
-        fraction = 1;
-        label = "?";
-      }
-      card.appendChild(ring(fraction, label, tone));
+    // --- buckets: late, then one per day, then everything further out -------
+    var width = host.clientWidth || 640;
+    var dayCount = Math.max(5, Math.min(14, Math.floor((width - 60) / 34)));
+    var buckets = [];
+    var byKey = {};
 
-      var body = el("div", "dial-body");
-      body.appendChild(el("div", "dial-title", titleOf(item)));
+    buckets.push({ key: "late", label: "Late", late: true, items: [] });
+    var cursor = new Date(now);
+    for (var d = 0; d < dayCount; d++) {
+      var when = new Date(+cursor + d * DAY);
+      var key = dayKey(when);
+      var bucket = {
+        key: key,
+        label: fmt(when.toISOString(), dayFmt).replace(/^[A-Za-z]+ /, ""),
+        full: fmt(when.toISOString(), dayFmt),
+        today: d === 0,
+        items: []
+      };
+      byKey[key] = bucket;
+      buckets.push(bucket);
+    }
+    var later = { key: "later", label: "Later", items: [] };
 
-      var meta = el("div", "dial-meta");
-      if (item.project) meta.appendChild(el("span", "dial-project", item.project));
-      var c = countdown(item, now);
-      meta.appendChild(el("span", "dial-when", c.main));
-      body.appendChild(meta);
-      card.appendChild(body);
-
-      card.setAttribute("aria-label", titleOf(item) + ", " + c.main);
-      if (item.jump_url) {
-        card.addEventListener("click", function () {
-          window.open(item.jump_url, "_blank", "noopener");
-        });
-      }
-      host.appendChild(card);
+    var lastKey = buckets[buckets.length - 1].key;
+    open.forEach(function (item) {
+      var when = new Date(item.deadline);
+      if (+when < +now) { buckets[0].items.push(item); return; }
+      var key = dayKey(when);
+      if (byKey[key]) byKey[key].items.push(item);
+      else if (key > lastKey) later.items.push(item);
+      else buckets[0].items.push(item);
     });
+    if (later.items.length) buckets.push(later);
+    if (!buckets[0].items.length) buckets.shift();
+
+    buckets.forEach(function (b) { b.total = b.items.length; });
+
+    var max = Math.max(2, Math.max.apply(null, buckets.map(function (b) { return b.total; })));
+    var tallest = buckets.reduce(function (a, b) { return b.total > a.total ? b : a; }, buckets[0]);
+
+    // --- axis ---------------------------------------------------------------
+    var yAxis = el("div", "chart-y");
+    var plotWrap = el("div", "plot-wrap");
+    var plot = el("div", "plot");
+
+    axisTicks(max).forEach(function (value) {
+      var f = value / max;
+      var line = el("div", "gridline" + (value === 0 ? " base" : ""));
+      line.style.bottom = (f * 100) + "%";
+      plot.appendChild(line);
+
+      var tick = el("div", "ytick", String(value));
+      tick.style.bottom = (f * 100) + "%";
+      yAxis.appendChild(tick);
+    });
+
+    var tip = el("div", "charttip");
+    tip.hidden = true;
+
+    buckets.forEach(function (bucket) {
+      var col = el("button", "col" + (bucket.items.length ? " has-work" : ""));
+      col.type = "button";
+      var tone = bucket.late ? "var(--critical)" : "var(--accent)";
+      col.style.setProperty("--tone", tone);
+
+      var stack = el("div", "stack");
+      stack.style.height = ((bucket.total / max) * 100) + "%";
+      // One equal block per script, so a column can be counted as well as read.
+      bucket.items.forEach(function () {
+        var seg = el("div", "seg");
+        seg.style.height = (100 / bucket.total) + "%";
+        stack.appendChild(seg);
+      });
+      col.appendChild(stack);
+
+      // One direct label, on the busiest column; the axis carries the rest.
+      if (bucket === tallest && bucket.total > 0) {
+        var cap = el("div", "col-cap", String(bucket.total));
+        cap.style.bottom = "calc(" + ((bucket.total / max) * 100) + "% + 4px)";
+        col.appendChild(cap);
+      }
+
+      if (bucket.items.length) {
+        var show = function () {
+          tip.textContent = "";
+          tip.appendChild(
+            el("b", null,
+              (bucket.late ? "Overdue" : bucket.full || bucket.label) +
+              " \u00b7 " + plural(bucket.total, "script"))
+          );
+          var list = el("ul");
+          bucket.items.forEach(function (item) {
+            var li = el("li");
+            li.appendChild(document.createTextNode(titleOf(item)));
+            li.appendChild(
+              el("span", null,
+                item.word_count ? item.word_count.toLocaleString() + "w" : "\u2014")
+            );
+            list.appendChild(li);
+          });
+          tip.appendChild(list);
+          var box = col.getBoundingClientRect();
+          var host_box = host.getBoundingClientRect();
+          tip.style.left = (box.left - host_box.left + box.width / 2) + "px";
+          tip.style.top = (box.top - host_box.top - 6) + "px";
+          tip.hidden = false;
+        };
+        col.addEventListener("mouseenter", show);
+        col.addEventListener("focus", show);
+        col.addEventListener("mouseleave", function () { tip.hidden = true; });
+        col.addEventListener("blur", function () { tip.hidden = true; });
+      }
+      plot.appendChild(col);
+    });
+
+    plotWrap.appendChild(plot);
+
+    var xrow = el("div", "xrow");
+    buckets.forEach(function (bucket) {
+      xrow.appendChild(
+        el("div",
+          "xlabel" + (bucket.today ? " today" : "") + (bucket.late ? " late" : ""),
+          bucket.today ? "Today" : bucket.label)
+      );
+    });
+    plotWrap.appendChild(xrow);
+
+    host.appendChild(yAxis);
+    host.appendChild(plotWrap);
+    host.appendChild(tip);
+
+    // Two classes, so identity never rests on colour alone.
+    var legend = el("div", "legend");
+    [["var(--critical)", "Overdue"], ["var(--accent)", "Ahead"]].forEach(function (pair) {
+      var entry = el("span");
+      var swatch = el("i");
+      swatch.style.setProperty("--tone", pair[0]);
+      entry.appendChild(swatch);
+      entry.appendChild(document.createTextNode(pair[1]));
+      legend.appendChild(entry);
+    });
+    plotWrap.appendChild(legend);
   }
 
   /* ---------- tiles, cards, table ---------- */
@@ -1461,6 +1618,26 @@
   }
 
   function renderHeader(now) {
+    if (DATA.board_title) {
+      document.querySelector("h1").textContent = DATA.board_title;
+      try { document.title = DATA.board_title; } catch (err) { /* sandboxed */ }
+    }
+    if (DATA.logo_url) {
+      var old_mark = document.querySelector(".mark");
+      var logo = document.createElement("img");
+      logo.className = "mark";
+      logo.src = DATA.logo_url;
+      logo.alt = "";
+      // If the URL is wrong or expired, fall back to the drawn mark rather
+      // than leaving a broken-image icon in the header.
+      logo.onerror = function () {
+        if (logo.parentNode) logo.parentNode.replaceChild(old_mark, logo);
+      };
+      if (old_mark && old_mark.parentNode) {
+        old_mark.parentNode.replaceChild(logo, old_mark);
+      }
+    }
+
     var roles = (DATA.roles || []).join(" / ") || "SCRIPT";
     var zone = TZ.split("/").pop().replace(/_/g, " ");
     document.getElementById("subline").textContent = roles.toLowerCase() + " · " + zone.toLowerCase();

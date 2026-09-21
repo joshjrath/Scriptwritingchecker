@@ -104,6 +104,11 @@ class Config:
     )
 
     # --- output -------------------------------------------------------------
+    #: Your own logo, as a URL the browser can reach. Uploading the image to a
+    #: Discord channel and copying its link is the easiest way to get one.
+    logo_url: str = ""
+    #: What the board calls itself, in the header and the browser tab.
+    board_title: str = "Script Board"
     webhook_url: str = ""
     data_file: str = "data/threads.json"
     #: Hand corrections that beat the parser, keyed by thread ID.
@@ -194,6 +199,12 @@ class Config:
         view = os.environ.get("SCRIPTCHECK_VIEW_TOKEN")
         if view:
             self.view_token = view
+        logo = os.environ.get("SCRIPTCHECK_LOGO_URL")
+        if logo:
+            self.logo_url = logo
+        title = os.environ.get("SCRIPTCHECK_BOARD_TITLE")
+        if title:
+            self.board_title = title
         user_id = os.environ.get("SCRIPTCHECK_MY_USER_ID")
         if user_id and user_id not in self.my_user_ids:
             self.my_user_ids.append(user_id)

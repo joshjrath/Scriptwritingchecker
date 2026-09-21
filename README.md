@@ -412,6 +412,20 @@ volume. Then it prints both of your links with the real tokens in them.
 
 The block contains your bot token, so it goes into the host and nowhere else.
 
+### Your own logo and name
+
+Two variables, no code and no redeploy of your own:
+
+```
+SCRIPTCHECK_LOGO_URL=https://.../logo.png
+SCRIPTCHECK_BOARD_TITLE=Specular Scripts
+```
+
+The easiest way to get a URL for an image you have: post it in a Discord channel
+you own, then copy the image's link. The title replaces the header text and the
+browser tab. If the logo URL ever breaks or expires, the page quietly falls back
+to the drawn mark rather than showing a broken image.
+
 ### Sharing the board with a team
 
 Two tokens, two levels:
@@ -557,10 +571,11 @@ python -m scriptcheck dashboard -i data/threads.json -o site/index.html
 ```
 
 The page leads with the single next deadline — a ticking timecode when it is
-inside 24 hours — then a **deadline runway**: a row per script with a bar
-spanning the gap between now and its deadline, so the length of the bar *is* the
-time you have. Overdue bars run backwards from the NOW line, hatched. Below that,
-count tiles that double as filters, a **Needs you now** list carrying the
+inside 24 hours — then a **scripts due** chart: a column per day
+counting what is owed, with everything overdue collected in one column at the
+left and anything past the window in "Later". Each script is its own block, so a
+column can be counted as well as read, and two scripts on Thursday is visibly a
+different Thursday from one. Below that, count tiles that double as filters, a **Needs you now** list carrying the
 warnings, and a table of everything with search and sort. Deadlines are formatted in your `display_timezone`
 whatever machine opens it, and **statuses are recomputed in the browser** — so a
 page built this morning still shows a correct countdown tonight, and a `PENDING`
@@ -614,6 +629,8 @@ embedding in a host that supplies its own document shell.
 | `submission_link_patterns` | Drive + Docs | Regexes that make a link count as a delivery. |
 | `accept_any_author` | `false` | Count a link from anyone, not just you. |
 | `done_tags` / `ignore_tags` | see config | Forum tags treated as delivered / skipped. |
+| `logo_url` | `""` | Your logo, as a URL the browser can reach. |
+| `board_title` | `Script Board` | Header text and browser tab title. |
 | `webhook_url` | `""` | Where `notify` and live alerts post. |
 | `access_token` | `""` | Your own secret for the live board; empty means open. |
 | `view_token` | `""` | Read-only secret to share with a team. |
@@ -630,7 +647,7 @@ embedding in a host that supplies its own document shell.
 python -m unittest discover -s tests -t .
 ```
 
-200 tests cover title and deadline parsing (including the two-timezone briefs,
+218 tests cover title and deadline parsing (including the two-timezone briefs,
 Discord `<t:…>` timestamps, date-only deadlines and month-name dates), role-section
 assignment, link detection, every status transition, the report formats, and the
 dashboard's data embedding (including that a thread title cannot break out of the
