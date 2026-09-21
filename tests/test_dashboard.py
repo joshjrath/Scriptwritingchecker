@@ -75,3 +75,39 @@ class TestDashboard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBranding(unittest.TestCase):
+    """A logo and a name can be set without touching the code."""
+
+    def test_defaults_carry_the_drawn_mark(self):
+        payload = build_payload([], CONFIG)
+        self.assertEqual(payload["logo_url"], "")
+        self.assertEqual(payload["board_title"], "Script Board")
+
+    def test_a_logo_and_title_reach_the_page(self):
+        config = Config(logo_url="https://cdn.example/logo.png", board_title="Specular Scripts")
+        html = render_dashboard([], config)
+        self.assertIn("https://cdn.example/logo.png", html)
+        self.assertIn("Specular Scripts", html)
+
+    def test_environment_variables_set_them(self):
+        import os
+
+        saved = {k: os.environ.get(k) for k in ("SCRIPTCHECK_LOGO_URL", "SCRIPTCHECK_BOARD_TITLE")}
+        os.environ["SCRIPTCHECK_LOGO_URL"] = "https://cdn.example/x.png"
+        os.environ["SCRIPTCHECK_BOARD_TITLE"] = "My Board"
+        try:
+            config = Config.load()
+            self.assertEqual(config.logo_url, "https://cdn.example/x.png")
+            self.assertEqual(config.board_title, "My Board")
+        finally:
+            for key, value in saved.items():
+                os.environ.pop(key, None)
+                if value is not None:
+                    os.environ[key] = value
+
+    def test_a_title_with_markup_cannot_break_out_of_the_data_block(self):
+        config = Config(board_title='</script><script>alert(1)</script>')
+        html = render_dashboard([], config)
+        self.assertNotIn("</script><script>alert(1)", html)

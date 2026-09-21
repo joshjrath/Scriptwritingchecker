@@ -68,6 +68,8 @@ def build_payload(
         "due_soon_hours": config.due_soon_hours,
         "banner": banner,
         "roles": list(config.my_roles),
+        "logo_url": config.logo_url,
+        "board_title": config.board_title,
         "live": live,
         "can_edit": can_edit,
         "assignments": rows,

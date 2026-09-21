@@ -407,6 +407,20 @@ volume. Then it prints both of your links with the real tokens in them.
 
 The block contains your bot token, so it goes into the host and nowhere else.
 
+### Your own logo and name
+
+Two variables, no code and no redeploy of your own:
+
+```
+SCRIPTCHECK_LOGO_URL=https://.../logo.png
+SCRIPTCHECK_BOARD_TITLE=Specular Scripts
+```
+
+The easiest way to get a URL for an image you have: post it in a Discord channel
+you own, then copy the image's link. The title replaces the header text and the
+browser tab. If the logo URL ever breaks or expires, the page quietly falls back
+to the drawn mark rather than showing a broken image.
+
 ### Sharing the board with a team
 
 Two tokens, two levels:
@@ -610,6 +624,8 @@ embedding in a host that supplies its own document shell.
 | `submission_link_patterns` | Drive + Docs | Regexes that make a link count as a delivery. |
 | `accept_any_author` | `false` | Count a link from anyone, not just you. |
 | `done_tags` / `ignore_tags` | see config | Forum tags treated as delivered / skipped. |
+| `logo_url` | `""` | Your logo, as a URL the browser can reach. |
+| `board_title` | `Script Board` | Header text and browser tab title. |
 | `webhook_url` | `""` | Where `notify` and live alerts post. |
 | `access_token` | `""` | Your own secret for the live board; empty means open. |
 | `view_token` | `""` | Read-only secret to share with a team. |
@@ -626,7 +642,7 @@ embedding in a host that supplies its own document shell.
 python -m unittest discover -s tests -t .
 ```
 
-200 tests cover title and deadline parsing (including the two-timezone briefs,
+218 tests cover title and deadline parsing (including the two-timezone briefs,
 Discord `<t:…>` timestamps, date-only deadlines and month-name dates), role-section
 assignment, link detection, every status transition, the report formats, and the
 dashboard's data embedding (including that a thread title cannot break out of the

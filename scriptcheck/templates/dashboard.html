@@ -195,10 +195,19 @@
     padding-block: 12px;
   }
   .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  /* A supplied logo replaces the drawn mark entirely - no border, no stripes,
+     no background tinting whatever it is. */
+  img.mark {
+    background: none;
+    border: 0;
+    box-shadow: none;
+    border-radius: 7px;
+  }
   .mark {
     flex: none;
     width: 32px; height: 32px;
     border-radius: 8px;
+    object-fit: contain;
     background:
       repeating-linear-gradient(118deg,
         color-mix(in srgb, var(--accent) 85%, transparent) 0 7px,
@@ -1593,6 +1602,26 @@
   }
 
   function renderHeader(now) {
+    if (DATA.board_title) {
+      document.querySelector("h1").textContent = DATA.board_title;
+      try { document.title = DATA.board_title; } catch (err) { /* sandboxed */ }
+    }
+    if (DATA.logo_url) {
+      var old_mark = document.querySelector(".mark");
+      var logo = document.createElement("img");
+      logo.className = "mark";
+      logo.src = DATA.logo_url;
+      logo.alt = "";
+      // If the URL is wrong or expired, fall back to the drawn mark rather
+      // than leaving a broken-image icon in the header.
+      logo.onerror = function () {
+        if (logo.parentNode) logo.parentNode.replaceChild(old_mark, logo);
+      };
+      if (old_mark && old_mark.parentNode) {
+        old_mark.parentNode.replaceChild(logo, old_mark);
+      }
+    }
+
     var roles = (DATA.roles || []).join(" / ") || "SCRIPT";
     var zone = TZ.split("/").pop().replace(/_/g, " ");
     document.getElementById("subline").textContent = roles.toLowerCase() + " · " + zone.toLowerCase();
