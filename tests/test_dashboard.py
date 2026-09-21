@@ -153,3 +153,77 @@ class TestTimezonePicker(unittest.TestCase):
             # EDT" cannot.
             self.assertRegex(value, r"(Z|[+\-]\d{2}:\d{2})$")
             datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+class TestMotion(unittest.TestCase):
+    """The board rebuilds its whole DOM every 60s, which constrains animation."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.html = render_dashboard(cls.items, CONFIG, now=NOW)
+        # The page ships a small base block plus the main one; take them all.
+        cls.css = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", cls.html, re.S))
+
+    def _looping_rules(self):
+        """Every rule declaring an infinite animation, as (selector, body)."""
+        out = []
+        for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", self.css):
+            body = match.group(2)
+            if "infinite" in body:
+                out.append((match.group(1).strip(), body))
+        return out
+
+    def test_every_looping_animation_is_phase_synced(self):
+        # A rebuilt element whose loop restarts at 0 reads as a stutter. The
+        # fix is a negative animation-delay carrying the elapsed phase, so any
+        # new infinite animation needs one too - except the page background,
+        # which is static markup and never re-rendered.
+        exempt = ("blob", "b1", "b2", "b3")
+        for selector, body in self._looping_rules():
+            if any(name in selector for name in exempt):
+                continue
+            self.assertIn(
+                "--phase", body,
+                "%s loops forever but is not phase-synced; it will restart "
+                "mid-cycle on the next render" % selector,
+            )
+
+    def test_looping_rules_exist_at_all(self):
+        # Guards the test above from passing vacuously.
+        self.assertGreaterEqual(len(self._looping_rules()), 5)
+
+    def test_entrances_are_gated_rather_than_replayed(self):
+        self.assertIn("entered[key]", self.html)
+        self.assertIn("lastChartKey", self.html)
+        self.assertIn("lastHeroId", self.html)
+
+    def test_only_owed_statuses_pulse(self):
+        # Due soon, pending and undated stay still, so movement keeps meaning
+        # "this is owed now" rather than just "this is on the board".
+        self.assertIn('item.live === "OVERDUE" || item.live === "DUE_TODAY"', self.html)
+
+    def test_reduced_motion_switches_everything_off(self):
+        blocks = re.findall(
+            r"@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{(.*?)\n  \}",
+            self.css, re.S,
+        )
+        self.assertTrue(blocks, "no reduced-motion block")
+        joined = " ".join(blocks)
+        for name in ("rise-in", "bar-breathe", "card-sweep", "rule-sweep",
+                     "stack-rise", "col-breathe"):
+            # named in a keyframes rule, so it must also be switched off
+            self.assertIn(name, self.css)
+        self.assertIn("animation: none", joined)
+
+    def test_the_sheen_mixes_against_the_card_tone(self):
+        # A custom property's var()s resolve against the element that declares
+        # it, so a :root-level --sheen holding var(--tone) would silently come
+        # out as the accent colour on every card.
+        self.assertNotIn("--sheen:", self.css)
+        # only the strength is a token; both themes set one
+        self.assertEqual(self.css.count("--sheen-strength:"), 3)
+        # and the mix happens in the rule that uses it, where --tone is in scope
+        sweep = self.css.split(".card.pulsing:not(.gentle)::after", 1)[1].split("}", 1)[0]
+        self.assertIn("var(--tone", sweep)
+        self.assertIn("var(--sheen-strength", sweep)

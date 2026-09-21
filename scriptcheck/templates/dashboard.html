@@ -33,6 +33,9 @@
     --pending: #4a5480;
     --accent: #5b3df5;
     --accent-ink: #ffffff;
+    /* Only the strength travels as a token: a --sheen holding var(--tone)
+       would resolve --tone against :root, not against the card. */
+    --sheen-strength: 14%;
 
     --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
     --font-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
@@ -69,6 +72,7 @@
       --pending: #8d95c4;
       --accent: #7c5cff;
       --accent-ink: #ffffff;
+      --sheen-strength: 22%;
     }
   }
 
@@ -99,6 +103,7 @@
     --pending: #8d95c4;
     --accent: #7c5cff;
     --accent-ink: #ffffff;
+    --sheen-strength: 22%;
   }
 
   body {
@@ -293,7 +298,10 @@
     margin-right: 6px;
     vertical-align: middle;
   }
-  .freshness.live .dot { animation: pulse 2.4s ease-in-out infinite; }
+  .freshness.live .dot {
+    animation: pulse 2.4s ease-in-out infinite;
+    animation-delay: var(--phase-dot, 0s);   /* the pill is rebuilt every render too */
+  }
   @keyframes pulse { 50% { opacity: .25; } }
   @media (prefers-reduced-motion: reduce) { .freshness.live .dot { animation: none; } }
 
@@ -954,6 +962,146 @@
     border-radius: 5px;
     padding: 1px 6px;
   }
+  /* ---------- motion ----------------------------------------------------- */
+  /* Three rules this section follows, because the board rebuilds its whole DOM
+     every minute:
+       1. Entrance animations run once per item, gated in JS - not on every
+          re-render, or the page would flinch every 60s.
+       2. Looping animations get a negative animation-delay equal to the time
+          already elapsed in the cycle, so an element replacing its own
+          predecessor picks the loop up mid-stride instead of snapping to 0.
+       3. Motion is spent in proportion to urgency: the hero and the overdue
+          cards move, the reference table does not.
+     Easing is expo-out (a fast start that settles) rather than ease-in-out,
+     which is what stops an entrance reading as a slide. */
+
+  :root {
+    --ease-settle: cubic-bezier(.16, 1, .3, 1);
+    --ease-travel: cubic-bezier(.45, .05, .25, 1);
+  }
+
+  /* --- entrances --- */
+  @keyframes rise-in {
+    from { opacity: 0; transform: translateY(10px) scale(.994); }
+  }
+  .card.enter,
+  .tile.enter {
+    animation: rise-in .62s var(--ease-settle) backwards;
+    animation-delay: var(--stagger, 0ms);
+  }
+
+  @keyframes hero-in {
+    from { opacity: 0; transform: translateY(6px); }
+  }
+  .hero.swap .hero-grid { animation: hero-in .55s var(--ease-settle) backwards; }
+
+  /* Columns grow from the baseline, the way the eye expects a bar to arrive. */
+  @keyframes stack-rise {
+    from { transform: scaleY(0); opacity: .4; }
+  }
+  .plot.enter .stack {
+    transform-origin: bottom;
+    animation: stack-rise .7s var(--ease-settle) backwards;
+    animation-delay: var(--rise, 0ms);
+  }
+  @keyframes cap-in { from { opacity: 0; transform: translateY(4px); } }
+  .plot.enter .col-cap {
+    animation: cap-in .4s var(--ease-settle) backwards;
+    animation-delay: calc(var(--rise, 0ms) + 340ms);
+  }
+
+  /* --- the overdue / due-today breath --- */
+  /* The accent bar carries the urgency. Opacity and glow move together on one
+     slow cycle: a single breath, not a blink. */
+  @keyframes bar-breathe {
+    0%, 100% {
+      opacity: .68;
+      box-shadow: 0 0 9px color-mix(in srgb, var(--tone, var(--accent)) 40%, transparent);
+    }
+    50% {
+      opacity: 1;
+      box-shadow: 0 0 22px color-mix(in srgb, var(--tone, var(--accent)) 90%, transparent);
+    }
+  }
+  .card.pulsing { --breathe: 3.2s; }
+  .card.pulsing.gentle { --breathe: 4.6s; }   /* due today reads calmer than overdue */
+  .card.pulsing::before {
+    animation: bar-breathe var(--breathe) ease-in-out infinite;
+    animation-delay: var(--phase-breathe, 0s);
+  }
+
+  /* --- the sweep, overdue only --- */
+  /* Held still for most of the cycle, then crossing quickly: motion with rests
+     reads as deliberate, where constant movement reads as a loading state. */
+  @keyframes card-sweep {
+    0%, 64%  { background-position: -60% 0; }
+    100%     { background-position: 260% 0; }
+  }
+  .card.pulsing:not(.gentle)::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(104deg,
+      transparent 40%,
+      color-mix(in srgb, var(--tone, var(--accent)) var(--sheen-strength, 18%), transparent) 50%,
+      transparent 60%);
+    background-size: 180% 100%;
+    background-repeat: no-repeat;
+    animation: card-sweep 6.4s var(--ease-travel) infinite;
+    animation-delay: var(--phase-sweep, 0s);
+  }
+
+  /* --- the hero rule --- */
+  /* The 2px rule already spans the panel; travelling a brighter node along it
+     keeps the hero alive without anything moving in the reading area. */
+  @keyframes rule-sweep {
+    0%   { background-position: -80% 0; opacity: .5; }
+    50%  { opacity: 1; }
+    100% { background-position: 180% 0; opacity: .5; }
+  }
+  .hero.urgent::after {
+    background-image: linear-gradient(90deg,
+      transparent 0%,
+      var(--tone, var(--accent)) 38%,
+      color-mix(in srgb, var(--tone, var(--accent)) 45%, white) 50%,
+      var(--tone, var(--accent)) 62%,
+      transparent 100%);
+    background-size: 60% 100%;
+    background-repeat: no-repeat;
+    animation: rule-sweep 5.2s var(--ease-travel) infinite;
+    animation-delay: var(--phase-shimmer, 0s);
+  }
+
+  /* --- tiles --- */
+  .tile.pulsing::before {
+    animation: bar-breathe var(--breathe, 3.2s) ease-in-out infinite;
+    animation-delay: var(--phase-breathe, 0s);
+  }
+  .tile .n { transition: color .3s ease; }
+
+  /* --- the late column --- */
+  @keyframes col-breathe {
+    0%, 100% { opacity: .82; }
+    50%      { opacity: 1; }
+  }
+  .col.late .stack {
+    animation: col-breathe 3.2s ease-in-out infinite;
+    animation-delay: var(--phase-breathe, 0s);
+  }
+
+  /* Nothing here is load-bearing: every animated property is decoration, so
+     switching them all off leaves the board complete. */
+  @media (prefers-reduced-motion: reduce) {
+    .card.enter, .tile.enter, .hero.swap .hero-grid,
+    .plot.enter .stack, .plot.enter .col-cap,
+    .card.pulsing::before, .card.pulsing::after,
+    .hero.urgent::after, .tile.pulsing::before, .col.late .stack {
+      animation: none !important;
+    }
+    .card.pulsing:not(.gentle)::after { content: none; }
+    .tile .n { transition: none; }
+  }
 </style>
 
 <div class="aurora" aria-hidden="true">
@@ -1081,6 +1229,55 @@
   } catch (err) { /* private window, blocked storage */ }
   var DUE_SOON_HOURS = typeof DATA.due_soon_hours === "number" ? DATA.due_soon_hours : 48;
   var DAY = 86400e3;
+
+  /* ---------- motion ---------- */
+
+  var REDUCED = false;
+  try {
+    REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (err) { /* old browser; CSS still honours the preference */ }
+
+  var CYCLE = { urgent: 3.2, calm: 4.6, sweep: 6.4, shimmer: 5.2 };
+
+  /* A re-render destroys the element mid-loop and builds a fresh one, which
+     would restart the animation from zero and read as a stutter. Handing the
+     new element a negative delay equal to the time already elapsed in the
+     cycle drops it in at the same point its predecessor was at. */
+  function syncPhase(node, prop, seconds) {
+    if (REDUCED) return;
+    node.style.setProperty(prop, "-" + ((Date.now() / 1000) % seconds).toFixed(2) + "s");
+  }
+
+  /* Entrances are once per item, not once per render. The key carries the
+     status, so a script that becomes overdue animates again - that is a real
+     change worth drawing the eye to - while one that simply stays overdue
+     sits still through every 60s rebuild. */
+  var entered = Object.create(null);
+
+  function entrance(node, key, index) {
+    if (REDUCED || entered[key]) return;
+    entered[key] = true;
+    node.classList.add("enter");
+    node.style.setProperty("--stagger", (Math.min(index, 8) * 55) + "ms");
+  }
+
+  /* Counting to the new number instead of swapping it shows which direction it
+     moved. Cubic-out so it arrives quickly and settles. */
+  function countUp(node, from, to) {
+    if (REDUCED || from === to) { node.textContent = String(to); return; }
+    var start = null;
+    var dur = 620;
+    function step(stamp) {
+      if (!node.isConnected) return;          // a re-render replaced it
+      if (start === null) start = stamp;
+      var t = Math.min(1, (stamp - start) / dur);
+      var eased = 1 - Math.pow(1 - t, 3);
+      node.textContent = String(Math.round(from + (to - from) * eased));
+      if (t < 1) requestAnimationFrame(step);
+    }
+    node.textContent = String(from);
+    requestAnimationFrame(step);
+  }
 
   var META = {
     OVERDUE:        { label: "Overdue",        tone: "var(--critical)", rank: 0 },
@@ -1261,6 +1458,9 @@
   }
 
   var state = { filter: null, query: "", sort: "urgency" };
+  var lastCounts = null;    // previous tile tally, so the numbers can roll
+  var lastHeroId = null;    // so the hero only animates when it actually changes
+  var lastChartKey = null;  // so columns only re-grow when the buckets change
 
   /* In drop-box mode the delivery happens in a server this board cannot see,
      so there is nothing to detect - you say so here, once, and it sticks. */
@@ -1368,6 +1568,8 @@
     heroItem = nextUp(now);
 
     if (!heroItem) {
+      host.classList.remove("urgent", "swap");
+      lastHeroId = null;
       host.classList.add("calm");
       host.style.setProperty("--tone", "var(--ok)");
       var grid = el("div", "hero-grid");
@@ -1385,6 +1587,16 @@
     var over = heroItem.live === "OVERDUE";
     host.classList.remove("calm");
     host.style.setProperty("--tone", META[heroItem.live].tone);
+
+    // The rule along the top of the panel is the only thing that moves up
+    // here: the countdown itself has to stay readable while it ticks.
+    var urgent = over || heroItem.live === "DUE_TODAY";
+    host.classList.toggle("urgent", urgent && !REDUCED);
+    if (urgent) syncPhase(host, "--phase-shimmer", CYCLE.shimmer);
+
+    // Only when a different script takes the top slot, not on every rebuild.
+    host.classList.toggle("swap", !REDUCED && heroItem.thread_id !== lastHeroId);
+    lastHeroId = heroItem.thread_id;
 
     var grid = el("div", "hero-grid");
     var left = el("div");
@@ -1514,6 +1726,12 @@
 
     buckets.forEach(function (b) { b.total = b.items.length; });
 
+    // Re-grow the columns when the shape of the work changes - a new brief, a
+    // delivery, a timezone switch - but not on an idle 60s rebuild.
+    var chartKey = buckets.map(function (b) { return b.key + ":" + b.total; }).join("|");
+    var chartChanged = chartKey !== lastChartKey;
+    lastChartKey = chartKey;
+
     var max = Math.max(2, Math.max.apply(null, buckets.map(function (b) { return b.total; })));
     var tallest = buckets.reduce(function (a, b) { return b.total > a.total ? b : a; }, buckets[0]);
 
@@ -1521,6 +1739,7 @@
     var yAxis = el("div", "chart-y");
     var plotWrap = el("div", "plot-wrap");
     var plot = el("div", "plot");
+    if (chartChanged && !REDUCED) plot.classList.add("enter");
 
     axisTicks(max).forEach(function (value) {
       var f = value / max;
@@ -1536,11 +1755,16 @@
     var tip = el("div", "charttip");
     tip.hidden = true;
 
-    buckets.forEach(function (bucket) {
+    buckets.forEach(function (bucket, index) {
       var col = el("button", "col" + (bucket.items.length ? " has-work" : ""));
       col.type = "button";
       var tone = bucket.late ? "var(--critical)" : "var(--accent)";
       col.style.setProperty("--tone", tone);
+      col.style.setProperty("--rise", (index * 42) + "ms");
+      if (bucket.late && bucket.total) {
+        col.classList.add("late");
+        syncPhase(col, "--phase-breathe", CYCLE.urgent);
+      }
 
       var stack = el("div", "stack");
       stack.style.height = ((bucket.total / max) * 100) + "%";
@@ -1626,13 +1850,25 @@
   function renderTiles(tally) {
     var host = document.getElementById("tiles");
     host.textContent = "";
-    TILES.forEach(function (key) {
+    TILES.forEach(function (key, index) {
       var n = tally[key] || 0;
       var btn = el("button", "tile glass" + (n ? "" : " zero"));
       btn.type = "button";
       btn.style.setProperty("--tone", tileTone(key));
       btn.setAttribute("aria-pressed", state.filter === key ? "true" : "false");
-      btn.appendChild(el("span", "n", String(n)));
+
+      if (n && (key === "OVERDUE" || key === "DUE_TODAY")) {
+        btn.classList.add("pulsing");
+        btn.style.setProperty("--breathe", (key === "DUE_TODAY" ? CYCLE.calm : CYCLE.urgent) + "s");
+        syncPhase(btn, "--phase-breathe", key === "DUE_TODAY" ? CYCLE.calm : CYCLE.urgent);
+      }
+      entrance(btn, "tile:" + key, index);
+
+      var value = el("span", "n", String(n));
+      // First paint counts up from nothing; later renders roll from whatever
+      // was on screen, so a script going overdue is visible as a movement.
+      countUp(value, lastCounts ? (lastCounts[key] || 0) : 0, n);
+      btn.appendChild(value);
       btn.appendChild(el("span", "k", tileLabel(key)));
       btn.addEventListener("click", function () {
         state.filter = state.filter === key ? null : key;
@@ -1640,6 +1876,7 @@
       });
       host.appendChild(btn);
     });
+    lastCounts = tally;
   }
 
   function metaRow(item) {
@@ -1668,9 +1905,20 @@
       return;
     }
 
-    urgent.forEach(function (item) {
+    urgent.forEach(function (item, index) {
       var card = el("article", "card glass");
       card.style.setProperty("--tone", META[item.live].tone);
+
+      // Only the two statuses that are actually owed today get a pulse; due
+      // soon and undated sit still, so the motion keeps meaning something.
+      if (item.live === "OVERDUE" || item.live === "DUE_TODAY") {
+        var gentle = item.live === "DUE_TODAY";
+        card.classList.add("pulsing");
+        if (gentle) card.classList.add("gentle");
+        syncPhase(card, "--phase-breathe", gentle ? CYCLE.calm : CYCLE.urgent);
+        if (!gentle) syncPhase(card, "--phase-sweep", CYCLE.sweep);
+      }
+      entrance(card, item.thread_id + ":" + item.live, index);
 
       var top = el("div", "card-top");
       var head = el("div");
@@ -2048,7 +2296,9 @@
     fresh.hidden = false;
     fresh.className = "freshness " + cls;
     fresh.textContent = "";
-    fresh.appendChild(el("span", "dot"));
+    var dot = el("span", "dot");
+    syncPhase(dot, "--phase-dot", 2.4);
+    fresh.appendChild(dot);
     fresh.appendChild(document.createTextNode(text));
   }
 
