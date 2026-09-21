@@ -332,120 +332,167 @@
   .hero.calm .timecode { font-size: clamp(22px, 3.6vw, 30px); }
 
   /* ---------- runway ---------- */
-  .runway { padding: 18px 20px 14px; }
-  .track {
-    position: relative;
-    height: 104px;
-    margin: 4px 0 0;
+  /* A row per script, with a bar spanning the gap between now and its
+     deadline. The length of the bar is the time you have, so the thing that
+     needs reading - who is closest to the wire - is the thing you see first. */
+  .runway { padding: 18px 20px 16px; }
+  .runway-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
   }
-  .axis {
-    position: absolute;
-    left: 0; right: 0; bottom: 26px;
-    height: 1px;
-    background: var(--stroke-2);
-  }
-  .tick {
-    position: absolute;
-    bottom: 4px;
-    transform: translateX(-50%);
-    text-align: center;
-  }
-  .tick i {
-    display: block;
-    width: 1px; height: 6px;
-    margin: 0 auto;
-    background: var(--stroke-2);
-  }
-  .tick span {
-    display: block;
+  .runway-note {
     font-family: var(--font-mono);
-    font-size: 9.5px;
-    letter-spacing: .06em;
+    font-size: 10.5px;
+    letter-spacing: .04em;
     color: var(--muted);
-    margin-top: 4px;
+  }
+
+  .gantt { margin-top: 14px; }
+  .grow {
+    display: grid;
+    grid-template-columns: minmax(120px, 190px) minmax(0, 1fr) 84px;
+    align-items: center;
+    gap: 12px;
+    padding: 3px 0;
+    border-radius: 8px;
+  }
+  .grow.clickable { cursor: pointer; }
+  .grow.clickable:hover { background: var(--panel-2); }
+  .grow.axis { padding-bottom: 2px; }
+
+  .glabel {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: .04em;
+    color: var(--ink-2);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 2px;
   }
-  .nowline {
+  .glabel b {
+    color: var(--ink);
+    font-weight: 500;
+    margin-right: 7px;
+  }
+  .grow.done .glabel, .grow.done .gtime { opacity: .5; }
+
+  .gtrack {
+    position: relative;
+    height: 22px;
+  }
+  .grow.axis .gtrack { height: 16px; }
+
+  .gnow {
     position: absolute;
-    top: 0; bottom: 26px;
+    top: -2px; bottom: -2px;
     width: 1px;
-    background: linear-gradient(to bottom, transparent, var(--accent));
-    transform: translateX(-.5px);
+    background: color-mix(in srgb, var(--accent) 70%, transparent);
   }
-  .nowline b {
+  .grow.axis .gnow { top: 0; bottom: -4px; }
+  .gnow b {
     position: absolute;
-    top: -2px; left: 50%;
+    top: -3px; left: 50%;
     transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--accent-ink);
+    background: var(--accent);
+    border-radius: 999px;
+    padding: 2px 6px;
+  }
+
+  .gtick {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: var(--stroke);
+  }
+  .gtick span {
+    position: absolute;
+    top: 1px; left: 4px;
     font-family: var(--font-mono);
     font-size: 9px;
-    font-weight: 600;
-    letter-spacing: .14em;
-    color: var(--accent);
-    background: var(--panel-2);
-    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    letter-spacing: .04em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  /* The gridlines continue behind every row, faintly. */
+  .grow:not(.axis) .gtick { background: color-mix(in srgb, var(--stroke) 55%, transparent); }
+  .grow:not(.axis) .gtick span { display: none; }
+
+  .gbar {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 8px;
+    min-width: 3px;
     border-radius: 999px;
-    padding: 1px 6px;
+    background: color-mix(in srgb, var(--tone) 32%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tone) 55%, transparent);
   }
-  .past {
-    position: absolute;
-    top: 0; bottom: 26px; left: 0;
-    background: color-mix(in srgb, var(--critical) 9%, transparent);
-    border-right: 1px dashed color-mix(in srgb, var(--critical) 40%, transparent);
-    border-radius: 10px 0 0 0;
+  .gbar.over {
+    background: repeating-linear-gradient(
+      -45deg,
+      color-mix(in srgb, var(--tone) 42%, transparent) 0 4px,
+      transparent 4px 8px
+    );
   }
-  .pin {
+  /* A solid cap marks the deadline itself, so the moment is readable even
+     when the bar is only a few pixels wide. */
+  .gcap {
     position: absolute;
-    width: 13px; height: 13px;
-    margin-left: -6.5px;
-    border-radius: 50%;
-    border: 0;
-    padding: 0;
-    cursor: pointer;
+    top: 50%;
+    width: 4px;
+    height: 16px;
+    margin-left: -2px;
+    transform: translateY(-50%);
+    border-radius: 2px;
     background: var(--tone);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 26%, transparent);
-    transition: transform .12s ease;
+    box-shadow: 0 0 10px color-mix(in srgb, var(--tone) 55%, transparent);
   }
-  .pin:hover, .pin:focus-visible { transform: scale(1.35); z-index: 3; }
-  .pin.done {
-    background: transparent;
-    border: 1.5px solid color-mix(in srgb, var(--ok) 70%, transparent);
-    box-shadow: none;
-  }
-  .pin.urgent::after {
-    content: "";
+  .gcap.pulse { animation: capbeat 2.2s ease-in-out infinite; }
+  @keyframes capbeat { 50% { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) { .gcap.pulse { animation: none; } }
+  .gdot {
     position: absolute;
-    inset: -5px;
+    top: 50%;
+    width: 9px; height: 9px;
+    margin-left: -4.5px;
+    transform: translateY(-50%);
     border-radius: 50%;
-    border: 1px solid var(--tone);
-    animation: ping 2.1s ease-out infinite;
+    border: 1.5px solid color-mix(in srgb, var(--ok) 65%, transparent);
+    background: var(--panel);
   }
-  @keyframes ping {
-    0% { transform: scale(.75); opacity: .9; }
-    100% { transform: scale(1.7); opacity: 0; }
+
+  .gtime {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--tone, var(--muted));
+    white-space: nowrap;
   }
-  @media (prefers-reduced-motion: reduce) { .pin.urgent::after { animation: none; opacity: .45; } }
-  .tip {
-    position: absolute;
-    z-index: 5;
-    pointer-events: none;
-    transform: translate(-50%, -100%);
-    background: var(--panel-2);
-    border: 1px solid var(--stroke-2);
-    border-radius: 8px;
-    padding: 7px 10px;
-    max-width: 230px;
-    font-size: 12px;
-    line-height: 1.35;
-    color: var(--ink);
-    box-shadow: var(--shade);
-  }
-  .tip b { display: block; font-weight: 600; }
-  .tip span { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); }
+
   .runway-empty {
     font-size: 13px;
     color: var(--muted);
-    padding: 26px 0 18px;
+    padding: 22px 0 14px;
     text-align: center;
+  }
+
+  @media (max-width: 620px) {
+    .grow { grid-template-columns: 78px minmax(0, 1fr) 68px; gap: 8px; }
+    /* Keep the slot, drop the title: three rows reading "What If..." tell you
+       nothing, while VIDEO-006 tells you exactly which script it is. */
+    .gname { display: none; }
+    .glabel b { margin-right: 0; }
+    .gtime { font-size: 9.5px; }
   }
 
   /* ---------- tiles ---------- */
@@ -768,8 +815,11 @@
   <section class="hero glass" id="hero" aria-label="Next deadline"></section>
 
   <section class="runway glass" aria-label="Deadline runway">
-    <p class="eyebrow">Deadline runway</p>
-    <div class="track" id="track"></div>
+    <div class="runway-head">
+      <p class="eyebrow">Deadline runway</p>
+      <span class="runway-note" id="runway-note"></span>
+    </div>
+    <div class="gantt" id="track"></div>
   </section>
 
   <section class="tiles" id="tiles" aria-label="Status summary"></section>
@@ -1118,92 +1168,128 @@
 
   function renderRunway(now) {
     var track = document.getElementById("track");
+    var note = document.getElementById("runway-note");
     track.textContent = "";
 
-    var dated = ITEMS.filter(function (i) { return i.deadline && !isNaN(new Date(i.deadline)); });
+    var dated = ITEMS.filter(function (i) {
+      return i.deadline && !isNaN(new Date(i.deadline)) && i.live !== "NOT_MINE" && i.live !== "IGNORED";
+    });
+    var undated = ITEMS.length - dated.length;
+
     if (!dated.length) {
+      note.textContent = "";
       track.appendChild(el("p", "runway-empty", "No readable deadlines to plot yet."));
       return;
     }
 
-    // Everything here is milliseconds: `now` is a Date, and `date + number`
+    // Everything in milliseconds: `now` is a Date, and `date + number`
     // concatenates strings rather than adding time.
     var nowMs = +now;
     var times = dated.map(function (i) { return +new Date(i.deadline); });
-    var start = Math.min(nowMs - 2 * DAY, Math.min.apply(null, times) - 0.5 * DAY);
-    start = Math.max(start, nowMs - 10 * DAY);
-    var end = Math.max(nowMs + 7 * DAY, Math.min(Math.max.apply(null, times) + DAY, nowMs + 30 * DAY));
+    var start = Math.min(nowMs - DAY, Math.min.apply(null, times) - 0.4 * DAY);
+    start = Math.max(start, nowMs - 7 * DAY);
+    var end = Math.max(nowMs + 5 * DAY, Math.min(Math.max.apply(null, times) + 0.6 * DAY, nowMs + 21 * DAY));
     var range = Math.max(end - start, DAY);
     var pct = function (t) { return ((t - start) / range) * 100; };
+    var clamp = function (v) { return Math.min(100, Math.max(0, v)); };
+    var nowPct = clamp(pct(nowMs));
 
-    track.appendChild(el("div", "axis"));
-
-    var past = el("div", "past");
-    past.style.width = Math.min(100, Math.max(0, pct(nowMs))) + "%";
-    track.appendChild(past);
-
-    // Day ticks, thinned out so labels never collide.
     var days = Math.ceil(range / DAY);
-    var slots = Math.max(2, Math.floor((track.clientWidth || 600) / 62));
+    note.textContent =
+      "next " + Math.round((end - nowMs) / DAY) + " days" +
+      (undated ? " \u00b7 " + undated + " without a deadline" : "");
+
+    // One set of day positions, reused by the axis and every row behind it.
+    var width = track.clientWidth || 640;
+    var slots = Math.max(2, Math.floor((width - 290) / 74));
     var step = Math.max(1, Math.ceil(days / slots));
+    var marks = [];
     var cursor = new Date(start);
     cursor.setUTCHours(12, 0, 0, 0);
     for (var i = 0; i <= days; i += step) {
       var t = +cursor + i * DAY;
-      if (t < start || t > end) continue;
       var p = pct(t);
-      if (p < 2 || p > 98) continue;
-      var tick = el("div", "tick");
-      tick.style.left = p + "%";
-      tick.appendChild(el("i"));
-      tick.appendChild(el("span", null, fmt(new Date(t).toISOString(), dayFmt)));
-      track.appendChild(tick);
+      if (p < 1 || p > 97) continue;
+      marks.push({ p: p, label: fmt(new Date(t).toISOString(), dayFmt) });
     }
 
-    var nowline = el("div", "nowline");
-    nowline.style.left = Math.min(100, Math.max(0, pct(nowMs))) + "%";
-    nowline.appendChild(el("b", null, "NOW"));
-    track.appendChild(nowline);
-
-    var tip = el("div", "tip");
-    tip.hidden = true;
-    track.appendChild(tip);
-
-    function showTip(item, left) {
-      tip.textContent = "";
-      tip.appendChild(el("b", null, titleOf(item)));
-      var c = countdown(item, new Date());
-      tip.appendChild(el("span", null, fmt(item.deadline, timeFmt) + " · " + c.main));
-      tip.style.left = Math.min(92, Math.max(8, left)) + "%";
-      tip.style.top = "-6px";
-      tip.hidden = false;
-    }
-
-    // Lay pins out in rows so same-day deadlines stay individually clickable.
-    var rows = [];
-    dated.slice().sort(function (a, b) { return new Date(a.deadline) - new Date(b.deadline); })
-      .forEach(function (item) {
-        var p = Math.min(99, Math.max(1, pct(+new Date(item.deadline))));
-        var row = 0;
-        while (rows[row] !== undefined && p - rows[row] < 4.5) row++;
-        rows[row] = p;
-
-        var done = item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE";
-        var pin = el("button", "pin" + (done ? " done" : "") + (URGENT.indexOf(item.live) !== -1 && !done ? " urgent" : ""));
-        pin.type = "button";
-        pin.style.setProperty("--tone", META[item.live].tone);
-        pin.style.left = p + "%";
-        pin.style.bottom = (34 + row * 17) + "px";
-        pin.setAttribute("aria-label", titleOf(item) + ", " + META[item.live].label);
-        pin.addEventListener("mouseenter", function () { showTip(item, p); });
-        pin.addEventListener("focus", function () { showTip(item, p); });
-        pin.addEventListener("mouseleave", function () { tip.hidden = true; });
-        pin.addEventListener("blur", function () { tip.hidden = true; });
-        pin.addEventListener("click", function () {
-          if (item.jump_url) window.open(item.jump_url, "_blank", "noopener");
-        });
-        track.appendChild(pin);
+    function gridInto(node, withLabels) {
+      marks.forEach(function (mark) {
+        var tick = el("div", "gtick");
+        tick.style.left = mark.p + "%";
+        if (withLabels) tick.appendChild(el("span", null, mark.label));
+        node.appendChild(tick);
       });
+      var nowline = el("div", "gnow");
+      nowline.style.left = nowPct + "%";
+      if (withLabels) nowline.appendChild(el("b", null, "NOW"));
+      node.appendChild(nowline);
+    }
+
+    // --- axis ---------------------------------------------------------------
+    var axis = el("div", "grow axis");
+    axis.appendChild(el("div", "glabel"));
+    var axisTrack = el("div", "gtrack");
+    gridInto(axisTrack, true);
+    axis.appendChild(axisTrack);
+    axis.appendChild(el("div", "gtime"));
+    track.appendChild(axis);
+
+    // --- one row per script, soonest first ----------------------------------
+    dated.slice().sort(function (a, b) {
+      return new Date(a.deadline) - new Date(b.deadline);
+    }).forEach(function (item) {
+      var done = item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE";
+      var tone = META[item.live].tone;
+      var deadlineMs = +new Date(item.deadline);
+
+      var row = el("div", "grow" + (done ? " done" : ""));
+      row.style.setProperty("--tone", tone);
+
+      var label = el("div", "glabel");
+      label.appendChild(el("b", null, item.slot || titleOf(item).slice(0, 12)));
+      label.appendChild(el("span", "gname", titleOf(item)));
+      label.title = titleOf(item);
+      row.appendChild(label);
+
+      var lane = el("div", "gtrack");
+      gridInto(lane, false);
+
+      if (done) {
+        var dot = el("div", "gdot");
+        dot.style.left = clamp(pct(deadlineMs)) + "%";
+        lane.appendChild(dot);
+      } else {
+        // The bar spans now -> deadline, or deadline -> now when overdue.
+        var from = clamp(pct(Math.min(nowMs, deadlineMs)));
+        var to = clamp(pct(Math.max(nowMs, deadlineMs)));
+        var bar = el("div", "gbar" + (deadlineMs < nowMs ? " over" : ""));
+        bar.style.left = from + "%";
+        bar.style.width = Math.max(to - from, 0.6) + "%";
+        lane.appendChild(bar);
+
+        var cap = el("div", "gcap" + (URGENT.indexOf(item.live) !== -1 ? " pulse" : ""));
+        cap.style.left = clamp(pct(deadlineMs)) + "%";
+        lane.appendChild(cap);
+      }
+      row.appendChild(lane);
+
+      var c = countdown(item, now);
+      var time = el("div", "gtime", c.main);
+      row.appendChild(time);
+
+      if (item.jump_url) {
+        row.classList.add("clickable");
+        row.setAttribute("role", "link");
+        row.tabIndex = 0;
+        var open = function () { window.open(item.jump_url, "_blank", "noopener"); };
+        row.addEventListener("click", open);
+        row.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+        });
+      }
+      track.appendChild(row);
+    });
   }
 
   /* ---------- tiles, cards, table ---------- */
