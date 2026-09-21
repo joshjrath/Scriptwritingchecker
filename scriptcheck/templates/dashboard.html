@@ -235,6 +235,42 @@
     letter-spacing: .04em;
     color: var(--muted);
   }
+  /* Styled as part of the subline rather than as a form control, since that is
+     where the timezone was already being named. */
+  .tzpick {
+    appearance: none;
+    -webkit-appearance: none;
+    font: inherit;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: .04em;
+    color: var(--ink-2);
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    padding: 1px 15px 1px 4px;
+    margin-left: 2px;
+    cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                      linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: right 7px top 8px, right 3px top 8px;
+    background-size: 4px 4px, 4px 4px;
+    background-repeat: no-repeat;
+  }
+  .tzpick:hover { color: var(--ink); background-color: var(--panel-2); }
+  .tzpick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; color: var(--ink); }
+  .tzpick option { background: var(--panel); color: var(--ink); }
+
+  /* Coarse pointers need a real tap target; the extra height is padding, so
+     the control still reads as part of the subline rather than a button. */
+  @media (pointer: coarse) {
+    .tzpick {
+      padding-top: 7px;
+      padding-bottom: 7px;
+      background-position: right 7px top 14px, right 3px top 14px;
+    }
+  }
+
   .freshness {
     flex: none;
     font-family: var(--font-mono);
@@ -946,7 +982,10 @@
       </svg>
       <div>
         <h1>Script Board</h1>
-        <p class="sub" id="subline">loading</p>
+        <p class="sub">
+          <span id="sub-roles"></span>
+          <select id="tzpick" class="tzpick" aria-label="Show times in"></select>
+        </p>
       </div>
     </div>
     <div class="bar-right">
@@ -1033,6 +1072,13 @@
   }
   var ITEMS = DATA.assignments || [];
   var TZ = DATA.timezone || "UTC";
+  var TZ_KEY = "scriptcheck.tz";
+  try {
+    // A per-viewer preference: the shared link opens in whatever zone each
+    // person last chose, without changing anyone else's board.
+    var savedTz = window.localStorage.getItem(TZ_KEY);
+    if (savedTz) TZ = savedTz;
+  } catch (err) { /* private window, blocked storage */ }
   var DUE_SOON_HOURS = typeof DATA.due_soon_hours === "number" ? DATA.due_soon_hours : 48;
   var DAY = 86400e3;
 
@@ -1060,7 +1106,36 @@
     return ITEMS.filter(function (i) { return HIDDEN.indexOf(i.live) === -1; });
   }
 
-  var dateFmt, timeFmt, dayFmt, slateFmt;
+  var dateFmt, timeFmt, dayFmt, slateFmt, dayKeyFmt;
+
+  /* Intl only spells a zone's letters in the locale that uses them: "IST"
+     needs en-IN, "BST" needs en-GB. Formatting stays en-US and only the zone
+     token is borrowed, so the board reads the way the briefs are written.
+     Borrowing rather than hardcoding keeps it right across DST. */
+  var ABBR_LOCALE = {
+    "Europe/London": "en-GB", "Europe/Dublin": "en-GB", "Europe/Berlin": "en-GB",
+    "Europe/Paris": "en-GB", "Europe/Madrid": "en-GB", "Asia/Dubai": "en-GB",
+    "Asia/Kolkata": "en-IN", "Asia/Calcutta": "en-IN", "Asia/Singapore": "en-SG",
+    "Asia/Tokyo": "ja-JP", "Australia/Sydney": "en-AU", "Australia/Melbourne": "en-AU",
+    "Australia/Brisbane": "en-AU", "Australia/Perth": "en-AU"
+  };
+
+  function tzAbbr(date, zone) {
+    var locale = ABBR_LOCALE[zone];
+    if (!locale) return "";
+    try {
+      var parts = new Intl.DateTimeFormat(locale, { timeZone: zone, timeZoneName: "short" })
+        .formatToParts(date);
+      for (var i = 0; i < parts.length; i++) {
+        // A "GMT+5:30" fallback is no better than what en-US already gives.
+        if (parts[i].type === "timeZoneName" && parts[i].value.indexOf("GMT") !== 0) {
+          return parts[i].value;
+        }
+      }
+    } catch (err) { /* locale or zone unavailable */ }
+    return "";
+  }
+
   function makeFmt(opts, useTz) {
     try {
       return new Intl.DateTimeFormat("en-US", useTz ? Object.assign({ timeZone: TZ }, opts) : opts);
@@ -1068,9 +1143,26 @@
       return new Intl.DateTimeFormat("en-US", opts);
     }
   }
-  dateFmt = makeFmt({ weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }, true);
-  timeFmt = makeFmt({ month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }, true);
-  dayFmt = makeFmt({ month: "short", day: "numeric" }, true);
+
+  /* Every displayed time runs through these, so switching timezone is a
+     rebuild plus a re-render - nothing on the page is stored pre-formatted. */
+  function buildFormatters() {
+    var baseDateFmt = makeFmt({ weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }, true);
+    // fmt() only ever calls .format(), so a wrapper is enough to retag the zone.
+    dateFmt = {
+      format: function (d) {
+        var abbr = tzAbbr(d, TZ);
+        if (!abbr) return baseDateFmt.format(d);
+        return baseDateFmt.formatToParts(d).map(function (part) {
+          return part.type === "timeZoneName" ? abbr : part.value;
+        }).join("");
+      }
+    };
+    timeFmt = makeFmt({ month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }, true);
+    dayFmt = makeFmt({ month: "short", day: "numeric" }, true);
+    dayKeyFmt = makeFmt({ year: "numeric", month: "2-digit", day: "2-digit" }, true);
+  }
+  buildFormatters();
   /* A publish slate is a calendar date, not a moment: render it in UTC so it
      does not slip a day when the display timezone is behind. */
   slateFmt = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
@@ -1337,8 +1429,6 @@
   /* ---------- runway ---------- */
 
   /* ---------- workload chart ---------- */
-
-  var dayKeyFmt = makeFmt({ year: "numeric", month: "2-digit", day: "2-digit" }, true);
 
   function dayKey(date) {
     // en-CA style parts give a sortable key in the board's own timezone, so a
@@ -1806,6 +1896,50 @@
     }
   }
 
+  /* A short, relevant list: the board's own zone, the viewer's, and the few
+     that come up in these briefs. */
+  var TZ_CHOICES = [
+    "America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York",
+    "Europe/London", "Europe/Berlin", "Asia/Dubai", "Asia/Kolkata",
+    "Asia/Singapore", "Asia/Tokyo", "Australia/Sydney", "UTC"
+  ];
+
+  function zoneLabel(zone) {
+    var city = zone === "UTC" ? "UTC" : zone.split("/").pop().replace(/_/g, " ");
+    var now = new Date();
+    var abbr = tzAbbr(now, zone);
+    if (!abbr) {
+      try {
+        var parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: zone, timeZoneName: "short"
+        }).formatToParts(now);
+        var found = parts.filter(function (p) { return p.type === "timeZoneName"; })[0];
+        abbr = found ? found.value : "";
+      } catch (err) { /* unknown zone */ }
+    }
+    return abbr && abbr !== city ? city + " \u00b7 " + abbr : city;
+  }
+
+  function buildTzPicker() {
+    var picker = document.getElementById("tzpick");
+    var local = "";
+    try { local = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (err) {}
+
+    var zones = [];
+    [DATA.timezone, local].concat(TZ_CHOICES).forEach(function (zone) {
+      if (zone && zones.indexOf(zone) === -1) zones.push(zone);
+    });
+
+    picker.textContent = "";
+    zones.forEach(function (zone) {
+      var option = el("option", null, zoneLabel(zone) +
+        (zone === DATA.timezone ? " (board)" : zone === local ? " (yours)" : ""));
+      option.value = zone;
+      picker.appendChild(option);
+    });
+    picker.value = zones.indexOf(TZ) === -1 ? DATA.timezone : TZ;
+  }
+
   function renderHeader(now) {
     if (DATA.board_title) {
       document.querySelector("h1").textContent = DATA.board_title;
@@ -1828,8 +1962,7 @@
     }
 
     var roles = (DATA.roles || []).join(" / ") || "SCRIPT";
-    var zone = TZ.split("/").pop().replace(/_/g, " ");
-    document.getElementById("subline").textContent = roles.toLowerCase() + " · " + zone.toLowerCase();
+    document.getElementById("sub-roles").textContent = roles.toLowerCase() + " ·";
 
     var fresh = document.getElementById("freshness");
     var stamp = DATA.fetched_at || DATA.generated_at;
@@ -1874,6 +2007,15 @@
       document.getElementById("bell").setAttribute("aria-expanded", "true");
     }
   }
+
+  document.getElementById("tzpick").addEventListener("change", function (e) {
+    TZ = e.target.value;
+    try { window.localStorage.setItem(TZ_KEY, TZ); } catch (err) { /* blocked */ }
+    buildFormatters();
+    buildTzPicker();
+    renderHeader(new Date());
+    render();
+  });
 
   document.getElementById("bell").addEventListener("click", function (e) {
     e.stopPropagation();
@@ -1976,6 +2118,7 @@
     connect();
   }
 
+  buildTzPicker();
   renderHeader(new Date());
   render();
   setInterval(tickHero, 1000);
