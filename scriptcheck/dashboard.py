@@ -21,6 +21,8 @@ STANDALONE_HEAD = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- The check alone: the full mark's ruled lines smudge at tab size. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='64' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%237C5CFF'/%3E%3Cstop offset='1' stop-color='%234B2FE0'/%3E%3C/linearGradient%3E%3Crect width='64' height='64' rx='15' fill='url(%23g)'/%3E%3Cpath d='M15 33.5 26 44.5 49 18' fill='none' stroke='%23fff' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
   :root { color-scheme: light dark; }
   body { margin: 0; font: 14px system-ui, sans-serif; }

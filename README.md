@@ -1,4 +1,9 @@
-# scriptcheck
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo.svg" alt="scriptcheck" width="340">
+  </picture>
+</p>
 
 Reads your Discord assignment threads, works out which scripts you owe, and tells
 you what is **delivered**, **pending**, **due**, or **missed**.
