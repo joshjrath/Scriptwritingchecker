@@ -268,3 +268,48 @@ class TestChannelScoping(unittest.TestCase):
 
     def test_without_dropbox_an_empty_filter_still_means_everything(self):
         self.assertTrue(Config().channel_matches("anything", "1"))
+
+
+class TestProjectParsing(unittest.TestCase):
+    """Video numbers restart per channel, so the project is the identifier."""
+
+    def test_the_show_tag_is_picked_up(self):
+        from scriptcheck.parsing import parse_project
+
+        self.assertEqual(parse_project(BRIEF.replace("SCRIPT", "@ UTDR\n\nSCRIPT", 1)), "UTDR")
+
+    def test_a_named_project_beats_the_tag(self):
+        from scriptcheck.parsing import parse_project
+
+        text = "Project: Undertale Deep Dives\n\n@ UTDR\n"
+        self.assertEqual(parse_project(text), "Undertale Deep Dives")
+
+    def test_a_label_on_its_own_line_takes_the_next_line(self):
+        from scriptcheck.parsing import parse_project
+
+        self.assertEqual(parse_project("\U0001f4c1 Project\nMarvel Explained\n"), "Marvel Explained")
+
+    def test_placeholders_are_not_a_project(self):
+        from scriptcheck.parsing import parse_project
+
+        self.assertEqual(parse_project("Project\nTBD\n"), "")
+        self.assertEqual(parse_project("Channel: N/A"), "")
+
+    def test_other_labels_work_too(self):
+        from scriptcheck.parsing import parse_project
+
+        for text in ["Show: Sci Explained", "Channel - Sci Explained", "Series: Sci Explained"]:
+            self.assertEqual(parse_project(text), "Sci Explained")
+
+    def test_nothing_found_is_empty(self):
+        from scriptcheck.parsing import parse_project
+
+        self.assertEqual(parse_project("just a note about the script"), "")
+        self.assertEqual(parse_project(""), "")
+
+    def test_the_assignment_carries_project_and_start(self):
+        brief = msg("100", "\U0001f4c1 Project\nUndertale\n\n" + BRIEF)
+        threads = collect_from_messages([brief], CONFIG)
+        assignment = build_assignment(threads[0], CONFIG, NOW)
+        self.assertEqual(assignment.project, "Undertale")
+        self.assertEqual(assignment.assigned_at, brief.created_at)

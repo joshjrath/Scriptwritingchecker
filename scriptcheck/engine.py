@@ -24,6 +24,7 @@ from .parsing import (
     find_links,
     looks_like_deadline_change,
     mentions,
+    parse_project,
     parse_thread_title,
     parse_word_count,
     split_role_sections,
@@ -117,6 +118,8 @@ def build_assignment(thread: Thread, config: Config, now: Optional[datetime] = N
 
     opening = thread.opening_post
     body = opening.content if opening else ""
+    assignment.project = parse_project(body)
+    assignment.assigned_at = (opening.created_at if opening else None) or thread.created_at
     sections = split_role_sections(body, config.known_roles)
     section, mine = _pick_section(sections, config)
 

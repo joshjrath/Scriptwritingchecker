@@ -657,3 +657,58 @@ def discover_role_headers(body: str) -> list[str]:
             if token not in found:
                 found.append(token)
     return found
+
+
+# ---------------------------------------------------------------------------
+# Which show a brief belongs to
+# ---------------------------------------------------------------------------
+
+RE_PROJECT_LABEL = re.compile(
+    r"^[^\w]*\s*(?:project|show|channel|series|client)\s*[:\-\u2013]?\s*(?P<value>.*)$",
+    re.IGNORECASE,
+)
+
+#: A line that is only a handle, e.g. "@ UTDR" - how these briefs tag the show.
+RE_SHOW_TAG = re.compile(r"^\s*@\s*(?P<value>[A-Za-z0-9][A-Za-z0-9 _.\-]{0,30})\s*$")
+
+#: Values that mean "not filled in yet".
+PLACEHOLDERS = {"tbd", "tba", "n/a", "na", "none", "-", "--", "?", "xxx"}
+
+
+def parse_project(body: str) -> str:
+    """The show a brief belongs to.
+
+    Video numbers restart per channel, so they identify nothing on their own;
+    the project is what tells two VIDEO-001s apart.
+    """
+
+    lines = (body or "").splitlines()
+    labelled = ""
+    tagged = ""
+
+    for index, line in enumerate(lines):
+        if not tagged:
+            tag = RE_SHOW_TAG.match(line)
+            if tag:
+                candidate = tag.group("value").strip()
+                if candidate.lower() not in PLACEHOLDERS:
+                    tagged = candidate
+
+        if labelled:
+            continue
+        match = RE_PROJECT_LABEL.match(line.strip())
+        if not match:
+            continue
+        value = match.group("value").strip()
+        if not value:
+            # The label sits on its own line; the value is the next one.
+            for following in lines[index + 1: index + 3]:
+                following = following.strip()
+                if following:
+                    value = following
+                    break
+        value = value.strip("*_` ").strip()
+        if value and value.lower() not in PLACEHOLDERS and len(value) <= 40:
+            labelled = value
+
+    return labelled or tagged

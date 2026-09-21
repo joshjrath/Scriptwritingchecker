@@ -275,8 +275,12 @@ class Assignment:
     slate_date: Optional[datetime] = None
     slot: str = ""
     title: str = ""
+    #: Which show the brief belongs to; video numbers restart per channel.
+    project: str = ""
     role: str = ""
     assignee_text: str = ""
+    #: When the brief landed - the moment the clock started.
+    assigned_at: Optional[datetime] = None
     deadline: Optional[datetime] = None
     deadline_raw: str = ""
     deadline_tz: str = ""
@@ -326,8 +330,10 @@ class Assignment:
             "slate_date": _iso(self.slate_date),
             "slot": self.slot,
             "title": self.title,
+            "project": self.project,
             "role": self.role,
             "assignee_text": self.assignee_text,
+            "assigned_at": _iso(self.assigned_at),
             "deadline": _iso(self.deadline),
             "deadline_raw": self.deadline_raw,
             "deadline_tz": self.deadline_tz,
