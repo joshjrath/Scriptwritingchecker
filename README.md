@@ -285,8 +285,9 @@ Pasting a brief in as text works identically, if forwarding ever mangles one.
 
 Easy to do from a phone, and two copies of one script means two countdowns,
 doubled reminders and a chart that counts the work twice. So repeat forwards are
-detected and collected into their own **Forwarded twice** section, out of the
-counts, the chart, the table and the alerts.
+detected and kept out of the counts, the chart, the table and the alerts, and
+collected behind a bell in the header - which appears only when there is
+something in it, and opens a panel listing each one with a link to its thread.
 
 Two forwards are the same script when the **title and project** match, ignoring
 case and punctuation - not the video number, which restarts per channel. Of the
