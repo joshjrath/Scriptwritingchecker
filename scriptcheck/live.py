@@ -370,7 +370,15 @@ class LiveBoard:
 
         self.state.reload_overrides()
         await self.publish()
-        return self.web.json_response({"ok": True, "thread_id": thread_id, "undo": undo})
+
+        # Hand the caller the new board. The push above updates every *other*
+        # open page; this makes the clicking one correct even where the event
+        # stream is blocked or buffered by a proxy.
+        board = self.state.payload()
+        board["can_edit"] = request.get("role", "owner") == "owner"
+        return self.web.json_response(
+            {"ok": True, "thread_id": thread_id, "undo": undo, "board": board}
+        )
 
     async def handle_favicon(self, request):
         """Browsers ask every page for a tab icon; answer quietly.

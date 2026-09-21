@@ -968,7 +968,13 @@
         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
         .then(function (result) {
           if (!result.ok) throw new Error(result.body && result.body.error);
-          // The server pushes the new board; no need to re-render here.
+          // Update straight from the reply rather than waiting on the stream,
+          // which some proxies buffer or drop.
+          if (result.body && result.body.board) {
+            applyBoard(result.body.board);
+          } else {
+            refresh();
+          }
         })
         .catch(function (err) {
           button.disabled = false;
@@ -1452,42 +1458,64 @@
   /* The page is served by the daemon, which pushes a new board whenever
      Discord tells it something changed. Falls back to polling if the stream
      cannot be held open (some proxies buffer SSE). */
+  var polling = null;
+
+  function applyBoard(data) {
+    if (!data || !data.assignments) return;
+    DATA = data;
+    ITEMS = data.assignments;
+    render();
+    setStatus(polling ? "live" : "live", polling ? "updating" : "live");
+  }
+
+  function refresh() {
+    return fetch("report.json", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(applyBoard)
+      .catch(function () { setStatus("dropped", "offline"); });
+  }
+
+  /* Poll when the event stream cannot be held open. Some hosts buffer or
+     close SSE connections, and a board that silently stops updating is worse
+     than one that updates a few seconds late. */
+  function startPolling() {
+    if (polling) return;
+    polling = setInterval(refresh, 15e3);
+    refresh();
+  }
+
   function goLive() {
     var retry = 0;
 
-    function poll() {
-      fetch("report.json", { cache: "no-store" })
-        .then(function (r) { return r.json(); })
-        .then(function (data) { accept(data); })
-        .catch(function () { setStatus("dropped", "offline"); });
-    }
-
-    function accept(data) {
-      if (!data || !data.assignments) return;
-      DATA = data;
-      ITEMS = data.assignments;
-      retry = 0;
-      render();
-      setStatus("live", "live");
-    }
-
     if (typeof EventSource === "undefined") {
-      setInterval(poll, 20e3);
-      poll();
+      startPolling();
       return;
     }
 
     function connect() {
-      var source = new EventSource("events");
+      var source;
+      try {
+        source = new EventSource("events");
+      } catch (err) {
+        startPolling();
+        return;
+      }
       source.addEventListener("board", function (event) {
-        try { accept(JSON.parse(event.data)); } catch (err) { /* ignore a bad frame */ }
+        retry = 0;
+        if (polling) { clearInterval(polling); polling = null; }
+        try { applyBoard(JSON.parse(event.data)); } catch (err) { /* bad frame */ }
       });
       source.onopen = function () { setStatus("live", "live"); };
       source.onerror = function () {
         source.close();
+        retry += 1;
+        if (retry >= 3) {
+          // Three failures is enough: stop pretending and start polling.
+          startPolling();
+          return;
+        }
         setStatus("dropped", "reconnecting");
-        retry = Math.min(retry + 1, 6);
-        setTimeout(connect, 1000 * Math.pow(2, retry - 1));
+        setTimeout(connect, 1000 * Math.pow(2, retry));
       };
     }
     connect();

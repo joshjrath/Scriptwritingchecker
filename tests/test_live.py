@@ -446,3 +446,60 @@ class TestFavicon(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await client.get("/")).status, 404)
         finally:
             await client.close()
+
+
+class TestMarkResponseCarriesTheBoard(unittest.IsolatedAsyncioTestCase):
+    """The clicking page must update from the reply, not from the stream."""
+
+    async def asyncSetUp(self):
+        import tempfile
+
+        config = Config(
+            my_user_ids=["111111111111111111"],
+            my_roles=["SCRIPT"],
+            overrides_file=str(Path(tempfile.mkdtemp()) / "overrides.json"),
+        )
+        self.board = LiveBoard(config, token="x", host="127.0.0.1", port=0)
+        self.board.state.replace_all(load_threads(FIXTURE))
+        self.client = TestClient(TestServer(self.board.build_app()))
+        await self.client.start_server()
+
+    async def asyncTearDown(self):
+        await self.client.close()
+
+    async def test_the_reply_contains_the_updated_row(self):
+        response = await self.client.post("/mark", json={"thread_id": "1003"})
+        body = await response.json()
+        self.assertIn("board", body)
+        row = [a for a in body["board"]["assignments"] if a["thread_id"] == "1003"][0]
+        self.assertIn("delivered_at", row["overridden"])
+        self.assertTrue(row["submissions"])
+
+    async def test_undo_is_reflected_in_its_own_reply(self):
+        await self.client.post("/mark", json={"thread_id": "1003"})
+        body = await (await self.client.post(
+            "/mark", json={"thread_id": "1003", "undo": True}
+        )).json()
+        row = [a for a in body["board"]["assignments"] if a["thread_id"] == "1003"][0]
+        self.assertEqual(row["overridden"], [])
+        self.assertEqual(row["submissions"], [])
+        self.assertEqual(row["status"], "OVERDUE")
+
+    async def test_the_reply_respects_the_viewer_role(self):
+        config = Config(
+            access_token="mine",
+            view_token="theirs",
+            my_roles=["SCRIPT"],
+            overrides_file=self.board.config.overrides_file,
+        )
+        board = LiveBoard(config, token="x", host="127.0.0.1", port=0)
+        board.state.replace_all(load_threads(FIXTURE))
+        client = TestClient(TestServer(board.build_app()))
+        await client.start_server()
+        try:
+            body = await (await client.post(
+                "/mark?k=mine", json={"thread_id": "1003"}
+            )).json()
+            self.assertTrue(body["board"]["can_edit"])
+        finally:
+            await client.close()
