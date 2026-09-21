@@ -673,6 +673,16 @@
   .markbtn.undo:hover { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 55%, transparent); }
   .markbtn[disabled] { opacity: .5; cursor: progress; }
   .markbtn.failed { color: var(--critical); border-color: var(--critical); }
+  .markerr {
+    display: block;
+    margin-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--critical);
+    max-width: 320px;
+    white-space: normal;
+  }
   .card .markbtn { margin-top: 10px; }
   .pill.flag {
     --tone: var(--unknown);
@@ -953,37 +963,59 @@
     if (done && !markedByHand(item)) return null;  // detected on its own
 
     var undo = done;
+    var wrap = el("span");
     var button = el("button", "markbtn" + (undo ? " undo" : ""), undo ? "undo" : "mark delivered");
     button.type = "button";
+    wrap.appendChild(button);
+
+    function fail(message) {
+      button.disabled = false;
+      button.textContent = undo ? "undo" : "mark delivered";
+      button.classList.add("failed");
+      var note = el("span", "markerr", message);
+      wrap.appendChild(note);
+    }
+
     button.addEventListener("click", function () {
       button.disabled = true;
       button.classList.remove("failed");
-      var original = button.textContent;
+      var stale = wrap.querySelector(".markerr");
+      if (stale) stale.remove();
       button.textContent = undo ? "undoing" : "saving";
+
+      var response;
       fetch("mark", {
         method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ thread_id: item.thread_id, undo: undo })
       })
-        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
-        .then(function (result) {
-          if (!result.ok) throw new Error(result.body && result.body.error);
-          // Update straight from the reply rather than waiting on the stream,
-          // which some proxies buffer or drop.
-          if (result.body && result.body.board) {
-            applyBoard(result.body.board);
+        .then(function (r) {
+          response = r;
+          return r.text();
+        })
+        .then(function (text) {
+          var body = {};
+          try { body = JSON.parse(text); } catch (err) { /* not JSON */ }
+          if (!response.ok) {
+            // Show the status too: 404 here means the session lost its token,
+            // which is a different problem from a failed write.
+            throw new Error(
+              (body.error || text || "no response") + " (HTTP " + response.status + ")"
+            );
+          }
+          if (body.board) {
+            applyBoard(body.board);
           } else {
             refresh();
           }
         })
         .catch(function (err) {
-          button.disabled = false;
-          button.textContent = original;
-          button.classList.add("failed");
-          button.title = String(err && err.message ? err.message : err);
+          fail(String(err && err.message ? err.message : err));
         });
     });
-    return button;
+    return wrap;
   }
 
   function decorate(now) {

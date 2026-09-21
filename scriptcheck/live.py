@@ -281,7 +281,11 @@ class LiveBoard:
             live=True,
             can_edit=request.get("role", "owner") == "owner",
         )
-        return self.web.Response(text=html, content_type="text/html")
+        return self.web.Response(
+            text=html,
+            content_type="text/html",
+            headers={"Cache-Control": "no-store, must-revalidate"},
+        )
 
     async def handle_report(self, request):
         payload = self.state.payload()
