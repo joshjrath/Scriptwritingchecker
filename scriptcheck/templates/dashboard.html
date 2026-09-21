@@ -521,10 +521,9 @@
   /* ---------- tiles ---------- */
   .tiles {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 10px;
   }
-  @media (max-width: 880px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   @media (max-width: 430px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
   .tile {
@@ -926,7 +925,10 @@
     NOT_MINE:       { label: "Not mine",       tone: "var(--muted)",    rank: 7 },
     IGNORED:        { label: "Ignored",        tone: "var(--muted)",    rank: 8 }
   };
-  var TILES = ["OVERDUE", "DUE_TODAY", "DUE_SOON", "PENDING", "NO_DEADLINE", "DELIVERED"];
+  /* The tiles are the headline counts only. Due soon, pending and undated
+     scripts still carry their own status everywhere else - the cards, the
+     table, the chart - so nothing is hidden by not having a tile. */
+  var TILES = ["OVERDUE", "DUE_TODAY", "DELIVERED"];
   var URGENT = ["OVERDUE", "DUE_TODAY", "DUE_SOON", "NO_DEADLINE"];
 
   var dateFmt, timeFmt, dayFmt, slateFmt;
@@ -1593,7 +1595,15 @@
     all.addEventListener("click", function () { state.filter = null; render(); });
     host.appendChild(all);
 
-    TILES.forEach(function (key) {
+    var chipKeys = TILES.slice();
+    // Offer these only when there is something in them, so the row stays short
+    // on an ordinary day but nothing becomes unreachable.
+    ["DUE_SOON", "PENDING", "NO_DEADLINE"].forEach(function (key) {
+      var n = ITEMS.filter(function (i) { return i.live === key; }).length;
+      if (n) chipKeys.splice(chipKeys.length - 1, 0, key);
+    });
+
+    chipKeys.forEach(function (key) {
       var chip = el("button", "chip", tileLabel(key));
       chip.type = "button";
       chip.setAttribute("aria-pressed", state.filter === key ? "true" : "false");
