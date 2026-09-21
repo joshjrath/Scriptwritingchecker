@@ -216,6 +216,7 @@ python -m scriptcheck invite --client-id ID  # print the read-only invite URL
 python -m scriptcheck invite --client-id ID --dropbox   # for a server you own
 python -m scriptcheck doctor                 # prove the bot can see everything
 python -m scriptcheck serve                  # LIVE: gateway + web server
+python -m scriptcheck deploy                 # everything needed to host it
 python -m scriptcheck fetch                  # pull threads from Discord -> data/threads.json
 python -m scriptcheck report                 # the full status report
 python -m scriptcheck report --action-only   # only what needs you
@@ -392,6 +393,19 @@ a 256MB process that idles at almost nothing.
 | **Railway** | `railway.json` and the `Dockerfile` are included and it deploys from GitHub in a browser — no terminal, no CLI. Configure it with the variables above. |
 | **Any VPS / Render paid tier** | `Dockerfile` included, health check wired to `/healthz`. |
 | **Render free tier, or anything that sleeps on idle** | won't work — a sleeping process is a disconnected bot. |
+
+### Putting it online
+
+```bash
+python -m scriptcheck deploy
+```
+
+Reads your working local setup and prints the numbered Railway steps plus one
+block to paste into its bulk variable editor — including `SCRIPTCHECK_CONFIG`
+built from your config file with `overrides_file` already pointed at the mounted
+volume. Then it prints both of your links with the real tokens in them.
+
+The block contains your bot token, so it goes into the host and nowhere else.
 
 ### Sharing the board with a team
 
@@ -610,7 +624,7 @@ embedding in a host that supplies its own document shell.
 python -m unittest discover -s tests -t .
 ```
 
-195 tests cover title and deadline parsing (including the two-timezone briefs,
+200 tests cover title and deadline parsing (including the two-timezone briefs,
 Discord `<t:…>` timestamps, date-only deadlines and month-name dates), role-section
 assignment, link detection, every status transition, the report formats, and the
 dashboard's data embedding (including that a thread title cannot break out of the

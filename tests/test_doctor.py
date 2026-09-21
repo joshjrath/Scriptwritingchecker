@@ -460,3 +460,66 @@ class TestShareTokens(unittest.TestCase):
             os.environ.pop("SCRIPTCHECK_VIEW_TOKEN", None)
             if saved is not None:
                 os.environ["SCRIPTCHECK_VIEW_TOKEN"] = saved
+
+
+class TestDeployHelper(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        self.dir = Path(tempfile.mkdtemp())
+        (self.dir / ".env").write_text(
+            "# comment\n"
+            "DISCORD_BOT_TOKEN=tok\n"
+            "SCRIPTCHECK_MY_USER_ID=111\n"
+            "SCRIPTCHECK_WEBHOOK_URL=https://hook?a=b\n"
+            "SCRIPTCHECK_ACCESS_TOKEN=mine\n"
+            "SCRIPTCHECK_VIEW_TOKEN=theirs\n"
+        )
+
+    def test_every_variable_makes_it_into_the_block(self):
+        import json
+
+        from scriptcheck.deploy import railway_env, read_env
+
+        env = read_env(self.dir / ".env")
+        block = railway_env(env, {"my_roles": ["SCRIPT"], "dropbox_channel_patterns": ["my-assignments"]})
+        for expected in [
+            "DISCORD_BOT_TOKEN=tok",
+            "SCRIPTCHECK_ACCESS_TOKEN=mine",
+            "SCRIPTCHECK_VIEW_TOKEN=theirs",
+            "SCRIPTCHECK_WEBHOOK_URL=https://hook?a=b",
+        ]:
+            self.assertIn(expected, block)
+
+    def test_the_config_is_one_line_and_valid_json(self):
+        import json
+
+        from scriptcheck.config import Config
+        from scriptcheck.deploy import railway_env, read_env
+
+        block = railway_env(
+            read_env(self.dir / ".env"),
+            {"my_roles": ["SCRIPT"], "dropbox_channel_patterns": ["my-assignments"]},
+        )
+        line = [l for l in block.splitlines() if l.startswith("SCRIPTCHECK_CONFIG=")][0]
+        self.assertEqual(len(line.splitlines()), 1)
+        parsed = json.loads(line.split("=", 1)[1])
+        Config.from_dict(parsed)  # must be loadable as-is
+
+    def test_overrides_are_moved_onto_the_volume(self):
+        from scriptcheck.deploy import hosted_config
+
+        hosted = hosted_config({"overrides_file": "data/overrides.json"})
+        self.assertEqual(hosted["overrides_file"], "/data/overrides.json")
+
+    def test_an_incomplete_env_is_reported(self):
+        from scriptcheck.deploy import missing, read_env
+
+        (self.dir / ".env").write_text("SCRIPTCHECK_MY_USER_ID=111\n")
+        self.assertIn("DISCORD_BOT_TOKEN", missing(read_env(self.dir / ".env")))
+
+    def test_a_missing_file_is_empty_not_an_error(self):
+        from scriptcheck.deploy import read_env
+
+        self.assertEqual(read_env("/nonexistent/.env"), {})

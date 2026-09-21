@@ -140,6 +140,25 @@ def cmd_setup(args) -> int:
         return 1
 
 
+def cmd_deploy(args) -> int:
+    from .deploy import run
+
+    branch = args.branch
+    if not branch:
+        import subprocess
+
+        try:
+            branch = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            ).stdout.strip()
+        except Exception:
+            branch = ""
+    return run(branch=branch)
+
+
 def cmd_serve(args) -> int:
     from .live import serve
 
@@ -335,6 +354,12 @@ def build_parser() -> argparse.ArgumentParser:
         "setup", help="Interactive first-run setup. Start here."
     )
     setup.set_defaults(func=cmd_setup)
+
+    deploy = sub.add_parser(
+        "deploy", help="Print everything needed to host the board online."
+    )
+    deploy.add_argument("--branch", default="", help="Branch to deploy (default: current).")
+    deploy.set_defaults(func=cmd_deploy)
 
     serve = sub.add_parser(
         "serve",
