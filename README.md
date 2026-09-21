@@ -281,6 +281,21 @@ blank, which is the one thing that would quietly break this whole path.
 
 Pasting a brief in as text works identically, if forwarding ever mangles one.
 
+### Forwarding the same brief twice
+
+Easy to do from a phone, and two copies of one script means two countdowns,
+doubled reminders and a chart that counts the work twice. So repeat forwards are
+detected and collected into their own **Forwarded twice** section, out of the
+counts, the chart, the table and the alerts.
+
+Two forwards are the same script when the **title and project** match, ignoring
+case and punctuation - not the video number, which restarts per channel. Of the
+copies, the one carrying a delivery wins, since that is the thread the work is
+actually in; otherwise the most recent, since a repeat forward is usually a
+revised brief. If the copies disagree about the deadline that is said out loud
+rather than quietly resolved, because a moved deadline and a stray double-tap
+look identical to a parser.
+
 ### Marking things delivered
 
 The delivery itself happens in *their* server, where this bot cannot see — so in

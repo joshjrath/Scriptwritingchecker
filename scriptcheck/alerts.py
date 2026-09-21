@@ -75,10 +75,16 @@ class AlertTracker:
     def _wants(self, kind: str) -> bool:
         return kind in self.kinds
 
+    @staticmethod
+    def _tracked(assignments: Iterable[Assignment]) -> list[Assignment]:
+        # A repeat forward is the same script; alerting on it twice is the
+        # exact noise the duplicate check exists to prevent.
+        return [a for a in assignments if a.status is not Status.DUPLICATE]
+
     def prime(self, assignments: Iterable[Assignment], now: datetime) -> None:
         """Seed the baseline without alerting, so a restart is silent."""
 
-        for assignment in assignments:
+        for assignment in self._tracked(assignments):
             self.previous[assignment.thread_id] = _snapshot(assignment)
             deadline_key = assignment.deadline.isoformat() if assignment.deadline else ""
             # Anything already inside a reminder window has had its chance.
@@ -92,7 +98,7 @@ class AlertTracker:
         self.primed = True
 
     def scan(self, assignments: Iterable[Assignment], now: datetime) -> list[Alert]:
-        assignments = list(assignments)
+        assignments = self._tracked(assignments)
         if not self.primed:
             self.prime(assignments, now)
             return []

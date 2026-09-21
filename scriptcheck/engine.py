@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional
 
@@ -349,6 +350,71 @@ def _add_warnings(assignment: Assignment, config: Config) -> None:
         assignment.warnings.append(f"No {roles} section found in the opening post.")
 
 
+def _fingerprint(assignment: Assignment) -> str:
+    """What makes two forwards the same script.
+
+    The title, not the video number: numbers restart per channel, so VIDEO-001
+    collides across shows while a title does not. The project joins it, since
+    two shows may legitimately use the same title.
+    """
+
+    title = (assignment.title or assignment.thread_name or "").lower()
+    title = re.sub(r"[^a-z0-9]+", " ", title).strip()
+    project = re.sub(r"[^a-z0-9]+", "", (assignment.project or "").lower())
+    return f"{project}|{title}" if title else ""
+
+
+def _mark_duplicates(items: list) -> None:
+    """Keep one copy of each script live and flag the rest.
+
+    Forwarding the same brief twice is easy from a phone, and two copies of one
+    script means two countdowns, doubled reminders, and a chart that counts the
+    work twice.
+    """
+
+    groups: dict = {}
+    for assignment in items:
+        if assignment.status in (Status.NOT_MINE, Status.IGNORED):
+            continue
+        key = _fingerprint(assignment)
+        if key:
+            groups.setdefault(key, []).append(assignment)
+
+    for copies in groups.values():
+        if len(copies) < 2:
+            continue
+
+        # The copy carrying a delivery wins - that is the thread the work is
+        # actually in. Otherwise the most recently forwarded, since a repeat
+        # forward is usually a revised brief.
+        def rank(a):
+            return (
+                1 if a.submissions else 0,
+                a.assigned_at or datetime.min.replace(tzinfo=timezone.utc),
+            )
+
+        ordered = sorted(copies, key=rank, reverse=True)
+        kept = ordered[0]
+        deadlines = {a.deadline for a in copies if a.deadline}
+
+        kept.warnings.append(
+            "Forwarded %d times; the other %s listed as a duplicate."
+            % (len(copies), "copy is" if len(copies) == 2 else "copies are")
+        )
+        for extra in ordered[1:]:
+            extra.status = Status.DUPLICATE
+            extra.duplicate_of = kept.thread_id
+            if len(deadlines) > 1:
+                extra.warnings.append(
+                    "! Forwarded more than once with different deadlines - check "
+                    "which brief is current."
+                )
+            else:
+                extra.warnings.append(
+                    'Same script as "%s".' % (kept.title or kept.thread_name)
+                )
+
+
 def build_assignments(
     threads: Iterable[Thread],
     config: Config,
@@ -374,6 +440,9 @@ def build_assignments(
             ):
                 assignment.status = _status_for(assignment, True, config, now)
         items.append(assignment)
+
+    _mark_duplicates(items)
+
     if not include_all:
         items = [a for a in items if a.status not in (Status.NOT_MINE, Status.IGNORED)]
     return sort_assignments(items)

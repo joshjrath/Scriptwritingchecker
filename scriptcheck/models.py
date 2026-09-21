@@ -179,6 +179,7 @@ class Status(str, Enum):
     SUBMITTED_LATE = "SUBMITTED_LATE"
     SUBMITTED = "SUBMITTED"
     NOT_MINE = "NOT_MINE"
+    DUPLICATE = "DUPLICATE"
     IGNORED = "IGNORED"
 
     @property
@@ -205,7 +206,8 @@ STATUS_ORDER = {
     Status.SUBMITTED_LATE: 5,
     Status.SUBMITTED: 6,
     Status.NOT_MINE: 7,
-    Status.IGNORED: 8,
+    Status.DUPLICATE: 8,
+    Status.IGNORED: 9,
 }
 
 STATUS_LABEL = {
@@ -217,6 +219,7 @@ STATUS_LABEL = {
     Status.SUBMITTED_LATE: "DELIVERED (LATE)",
     Status.SUBMITTED: "DELIVERED",
     Status.NOT_MINE: "NOT ASSIGNED TO ME",
+    Status.DUPLICATE: "DUPLICATE",
     Status.IGNORED: "IGNORED",
 }
 
@@ -296,6 +299,8 @@ class Assignment:
     evidence: dict = field(default_factory=dict)
     #: Fields supplied by the overrides file rather than by parsing.
     overridden: list[str] = field(default_factory=list)
+    #: Set on a repeat forward: the thread ID this duplicates.
+    duplicate_of: str = ""
 
     @property
     def needs_review(self) -> bool:
@@ -347,6 +352,7 @@ class Assignment:
             "confidence": self.confidence.value,
             "evidence": dict(self.evidence),
             "overridden": list(self.overridden),
+            "duplicate_of": self.duplicate_of,
             "needs_review": self.needs_review,
         }
 

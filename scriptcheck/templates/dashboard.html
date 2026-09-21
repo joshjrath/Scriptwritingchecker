@@ -643,6 +643,30 @@
   .empty { padding: 30px 20px; text-align: center; color: var(--muted); border-style: dashed; }
   .empty strong { display: block; color: var(--ink); font-weight: 600; margin-bottom: 4px; font-size: 16px; }
 
+  /* ---------- duplicates ---------- */
+  .dupes { display: flex; flex-direction: column; gap: 8px; }
+  .dupe {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 11px 15px;
+    border-radius: 12px;
+    background: var(--panel);
+    border: 1px dashed var(--stroke-2);
+  }
+  .dupe-title { font-size: 14px; color: var(--ink-2); }
+  .dupe-title a { color: inherit; text-decoration: none; }
+  .dupe-title a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .dupe-note {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+  .dupe-note.clash { color: var(--today); }
+
   /* ---------- controls ---------- */
   .tablehead {
     display: flex;
@@ -859,6 +883,11 @@
 
   <section class="tiles" id="tiles" aria-label="Status summary"></section>
 
+  <section id="dupes-section" hidden>
+    <p class="eyebrow">Forwarded twice <span class="count" id="dupes-count"></span></p>
+    <div class="dupes" id="dupes"></div>
+  </section>
+
   <section>
     <p class="eyebrow">Needs you now</p>
     <div class="urgent" id="urgent"></div>
@@ -923,6 +952,7 @@
     SUBMITTED_LATE: { label: "Delivered late", tone: "var(--ok)",       rank: 5 },
     SUBMITTED:      { label: "Delivered",      tone: "var(--ok)",       rank: 6 },
     NOT_MINE:       { label: "Not mine",       tone: "var(--muted)",    rank: 7 },
+    DUPLICATE:      { label: "Duplicate",      tone: "var(--muted)",    rank: 8 },
     IGNORED:        { label: "Ignored",        tone: "var(--muted)",    rank: 8 }
   };
   /* The tiles are the headline counts only. Due soon, pending and undated
@@ -930,6 +960,12 @@
      table, the chart - so nothing is hidden by not having a tile. */
   var TILES = ["OVERDUE", "DUE_TODAY", "DELIVERED"];
   var URGENT = ["OVERDUE", "DUE_TODAY", "DUE_SOON", "NO_DEADLINE"];
+  /* Statuses that never belong in the counts, the chart or the table. */
+  var HIDDEN = ["NOT_MINE", "IGNORED", "DUPLICATE"];
+
+  function active() {
+    return ITEMS.filter(function (i) { return HIDDEN.indexOf(i.live) === -1; });
+  }
 
   var dateFmt, timeFmt, dayFmt, slateFmt;
   function makeFmt(opts, useTz) {
@@ -974,7 +1010,10 @@
 
   function liveStatus(item, now) {
     var s = item.status;
-    if (s === "SUBMITTED" || s === "SUBMITTED_LATE" || s === "NOT_MINE" || s === "IGNORED") return s;
+    // These are decided by the server, not by the clock. Recomputing them from
+    // the deadline would resurrect a duplicate as a live assignment.
+    if (s === "SUBMITTED" || s === "SUBMITTED_LATE" || s === "NOT_MINE" ||
+        s === "IGNORED" || s === "DUPLICATE") return s;
     if (!item.deadline) return "NO_DEADLINE";
     var ms = new Date(item.deadline) - now;
     if (isNaN(ms)) return "NO_DEADLINE";
@@ -1113,7 +1152,7 @@
   function counts() {
     var out = {};
     TILES.forEach(function (k) { out[k] = 0; });
-    ITEMS.forEach(function (item) {
+    active().forEach(function (item) {
       if (item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE") out.DELIVERED++;
       else if (out[item.live] !== undefined) out[item.live]++;
     });
@@ -1234,9 +1273,7 @@
     var note = document.getElementById("runway-note");
     host.textContent = "";
 
-    var mine = ITEMS.filter(function (i) {
-      return i.live !== "NOT_MINE" && i.live !== "IGNORED";
-    });
+    var mine = active();
     var open = mine.filter(function (i) {
       return i.live !== "SUBMITTED" && i.live !== "SUBMITTED_LATE" && i.deadline;
     });
@@ -1437,7 +1474,7 @@
   function renderUrgent(now) {
     var host = document.getElementById("urgent");
     host.textContent = "";
-    var urgent = sorted(ITEMS.filter(function (i) { return URGENT.indexOf(i.live) !== -1; }));
+    var urgent = sorted(active().filter(function (i) { return URGENT.indexOf(i.live) !== -1; }));
 
     if (!urgent.length) {
       var ok = el("div", "empty glass");
@@ -1518,9 +1555,10 @@
   function renderTable(now) {
     var host = document.getElementById("rows");
     host.textContent = "";
-    var list = sorted(ITEMS.filter(function (i) { return matchesFilter(i) && matchesQuery(i); }));
+    var pool = active();
+    var list = sorted(pool.filter(function (i) { return matchesFilter(i) && matchesQuery(i); }));
     document.getElementById("count").textContent =
-      list.length + (list.length === ITEMS.length ? "" : " of " + ITEMS.length);
+      list.length + (list.length === pool.length ? "" : " of " + pool.length);
 
     if (!list.length) {
       var tr = el("tr");
@@ -1586,6 +1624,49 @@
     });
   }
 
+  function renderDuplicates() {
+    var section = document.getElementById("dupes-section");
+    var host = document.getElementById("dupes");
+    host.textContent = "";
+
+    var dupes = ITEMS.filter(function (i) { return i.live === "DUPLICATE"; });
+    section.hidden = dupes.length === 0;
+    document.getElementById("dupes-count").textContent = dupes.length || "";
+    if (!dupes.length) return;
+
+    dupes.forEach(function (item) {
+      var row = el("div", "dupe");
+      var left = el("div");
+      var title = el("div", "dupe-title");
+      if (item.jump_url) {
+        var a = el("a", null, titleOf(item));
+        a.href = item.jump_url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        title.appendChild(a);
+      } else {
+        title.textContent = titleOf(item);
+      }
+      left.appendChild(title);
+
+      var clash = (item.warnings || []).some(function (w) {
+        return w.indexOf("different deadlines") !== -1;
+      });
+      left.appendChild(
+        el("div", "dupe-note" + (clash ? " clash" : ""),
+          clash
+            ? "forwarded again with a different deadline - check which brief is current"
+            : "already tracked above; this copy is ignored")
+      );
+      row.appendChild(left);
+
+      var pill = el("span", "pill", "Duplicate");
+      pill.style.setProperty("--tone", "var(--muted)");
+      row.appendChild(pill);
+      host.appendChild(row);
+    });
+  }
+
   function renderChips() {
     var host = document.getElementById("chips");
     host.textContent = "";
@@ -1599,7 +1680,7 @@
     // Offer these only when there is something in them, so the row stays short
     // on an ordinary day but nothing becomes unreachable.
     ["DUE_SOON", "PENDING", "NO_DEADLINE"].forEach(function (key) {
-      var n = ITEMS.filter(function (i) { return i.live === key; }).length;
+      var n = active().filter(function (i) { return i.live === key; }).length;
       if (n) chipKeys.splice(chipKeys.length - 1, 0, key);
     });
 
@@ -1614,7 +1695,7 @@
       host.appendChild(chip);
     });
 
-    var flagged = ITEMS.filter(function (i) { return i.needs_review; }).length;
+    var flagged = active().filter(function (i) { return i.needs_review; }).length;
     if (flagged) {
       var review = el("button", "chip", "Needs check (" + flagged + ")");
       review.type = "button";
@@ -1685,6 +1766,7 @@
     renderHero(now);
     renderRunway(now);
     renderTiles(counts());
+    renderDuplicates();
     renderChips();
     renderUrgent(now);
     renderTable(now);

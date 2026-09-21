@@ -207,7 +207,12 @@ class TestCollecting(unittest.TestCase):
         self.assertEqual(assignment.status, Status.DUE_TODAY)
 
     def test_several_briefs_become_several_assignments(self):
-        second = BRIEF.replace("VIDEO-001", "VIDEO-002").replace(
+        # A different script, so a different title - sharing a title would
+        # (correctly) be read as the same brief forwarded twice.
+        second = BRIEF.replace(
+            "VIDEO-001 | What If Sans Remembered Every RESET?",
+            "VIDEO-002 | How Do Spider-Man's Webs Work?",
+        ).replace(
             "9/20/2026 @ 11:59 PM ET", "9/28/2026 @ 11:59 PM ET"
         ).replace("9/21/2026 @ 9:29 AM IST", "9/29/2026 @ 9:29 AM IST")
         threads = collect_from_messages(
@@ -325,3 +330,92 @@ class TestProjectParsing(unittest.TestCase):
         assignment = build_assignment(threads[0], CONFIG, NOW)
         self.assertEqual(assignment.project, "Undertale")
         self.assertEqual(assignment.assigned_at, brief.created_at)
+
+
+class TestDuplicateForwards(unittest.TestCase):
+    """Forwarding the same brief twice must not become two assignments."""
+
+    def two_forwards(self, second_text=None, delivered_in=None, minutes=60):
+        first = msg("100", BRIEF)
+        second = msg("200", second_text or BRIEF, minutes=minutes)
+        threads = collect_from_messages([first], CONFIG) + collect_from_messages(
+            [second], CONFIG
+        )
+        if delivered_in is not None:
+            threads[delivered_in].messages.append(
+                msg("900", "done " + DRIVE, minutes=minutes + 5)
+            )
+        return build_assignments(threads, CONFIG, now=NOW, include_all=True, overrides={})
+
+    def test_the_second_copy_is_flagged_not_counted(self):
+        items = self.two_forwards()
+        statuses = sorted(a.status.value for a in items)
+        self.assertEqual(statuses, ["DUE_TODAY", "DUPLICATE"])
+
+    def test_the_duplicate_points_at_the_copy_being_tracked(self):
+        items = self.two_forwards()
+        dupe = next(a for a in items if a.status is Status.DUPLICATE)
+        kept = next(a for a in items if a.status is not Status.DUPLICATE)
+        self.assertEqual(dupe.duplicate_of, kept.thread_id)
+        self.assertTrue(any("Same script as" in w for w in dupe.warnings))
+        self.assertTrue(any("Forwarded 2 times" in w for w in kept.warnings))
+
+    def test_the_newest_forward_wins_when_neither_is_delivered(self):
+        items = self.two_forwards()
+        kept = next(a for a in items if a.status is not Status.DUPLICATE)
+        self.assertEqual(kept.thread_id, "200")
+
+    def test_the_copy_holding_the_delivery_wins(self):
+        # The older forward has the Drive link in its thread, so it is the one
+        # that matters even though a newer copy exists.
+        items = self.two_forwards(delivered_in=0)
+        kept = next(a for a in items if a.status is not Status.DUPLICATE)
+        self.assertEqual(kept.thread_id, "100")
+        self.assertTrue(kept.status.is_submitted)
+
+    def test_a_changed_deadline_is_called_out_loudly(self):
+        revised = BRIEF.replace("9/20/2026 @ 11:59 PM ET", "9/24/2026 @ 11:59 PM ET")
+        items = self.two_forwards(second_text=revised)
+        dupe = next(a for a in items if a.status is Status.DUPLICATE)
+        self.assertTrue(any("different deadlines" in w for w in dupe.warnings))
+        self.assertTrue(dupe.needs_review)
+
+    def test_different_scripts_are_left_alone(self):
+        other = BRIEF.replace(
+            "VIDEO-001 | What If Sans Remembered Every RESET?",
+            "VIDEO-002 | How Do Spider-Man's Webs Work?",
+        )
+        items = self.two_forwards(second_text=other)
+        self.assertFalse([a for a in items if a.status is Status.DUPLICATE])
+
+    def test_the_same_title_on_a_different_show_is_not_a_duplicate(self):
+        other_show = BRIEF.replace("@ UTDR", "@ MARVEL")
+        items = self.two_forwards(second_text="\U0001f4c1 Project\nMarvel\n\n" + other_show)
+        self.assertFalse([a for a in items if a.status is Status.DUPLICATE])
+
+    def test_case_and_punctuation_do_not_defeat_it(self):
+        shouty = BRIEF.replace(
+            "What If Sans Remembered Every RESET?", "WHAT IF SANS REMEMBERED EVERY RESET"
+        )
+        items = self.two_forwards(second_text=shouty)
+        self.assertEqual(len([a for a in items if a.status is Status.DUPLICATE]), 1)
+
+    def test_three_forwards_leave_one_live(self):
+        threads = []
+        for i, mid in enumerate(["100", "200", "300"]):
+            threads += collect_from_messages([msg(mid, BRIEF, minutes=i * 30)], CONFIG)
+        items = build_assignments(threads, CONFIG, now=NOW, include_all=True, overrides={})
+        live = [a for a in items if a.status is not Status.DUPLICATE]
+        self.assertEqual(len(live), 1)
+        self.assertEqual(len(items) - len(live), 2)
+        self.assertTrue(any("Forwarded 3 times" in w for w in live[0].warnings))
+
+    def test_duplicates_do_not_raise_their_own_alerts(self):
+        from scriptcheck.alerts import AlertTracker
+
+        items = self.two_forwards()
+        tracker = AlertTracker()
+        tracker.prime([], NOW)
+        alerts = tracker.scan(items, NOW)
+        # One new assignment announced, not two.
+        self.assertEqual(len(alerts), 1)
