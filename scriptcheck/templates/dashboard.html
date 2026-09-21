@@ -418,14 +418,6 @@
   .stack .seg:last-child {    /* the data-end, at the top of the column */
     border-radius: 4px 4px 0 0;
   }
-  .seg.unknown {
-    background: repeating-linear-gradient(
-      -45deg,
-      var(--tone, var(--accent)) 0 3px,
-      transparent 3px 6px
-    );
-    border: 1px solid color-mix(in srgb, var(--tone, var(--accent)) 60%, transparent);
-  }
   .col:hover .stack { filter: brightness(1.15); }
   .col-cap {
     position: absolute;
@@ -833,9 +825,9 @@
 
   <section class="hero glass" id="hero" aria-label="Next deadline"></section>
 
-  <section class="runway glass" aria-label="Words due over the next two weeks">
+  <section class="runway glass" aria-label="Scripts due over the next two weeks">
     <div class="runway-head">
-      <p class="eyebrow">Words due</p>
+      <p class="eyebrow">Scripts due</p>
       <span class="runway-note" id="runway-note"></span>
     </div>
     <div class="chart" id="track"></div>
@@ -1197,23 +1189,18 @@
     return parts.year + "-" + parts.month + "-" + parts.day;
   }
 
-  function niceCeil(value) {
-    if (value <= 0) return 1000;
-    var power = Math.pow(10, Math.floor(Math.log10(value)));
-    var steps = [1, 1.5, 2, 2.5, 5, 10];
-    for (var i = 0; i < steps.length; i++) {
-      if (steps[i] * power >= value) return steps[i] * power;
-    }
-    return 10 * power;
+  /* Counts are small integers, so the axis is too: never a "2.5 scripts" tick. */
+  function axisTicks(max) {
+    var step = max <= 5 ? 1 : Math.ceil(max / 4);
+    var ticks = [];
+    for (var v = 0; v <= max; v += step) ticks.push(v);
+    if (ticks[ticks.length - 1] !== max) ticks.push(max);
+    return ticks;
   }
 
-  function shortWords(n) {
-    return n >= 1000 ? (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + "k" : String(n);
+  function plural(n, word) {
+    return n + " " + word + (n === 1 ? "" : "s");
   }
-
-  //: Used for a script whose brief never states a word count, so the column is
-  //: not silently short. Drawn hatched and called out in the tooltip.
-  var ASSUMED_WORDS = 2000;
 
   function renderRunway(now) {
     var host = document.getElementById("track");
@@ -1236,11 +1223,11 @@
       return;
     }
 
-    var totalWords = 0;
-    open.forEach(function (i) { totalWords += i.word_count || ASSUMED_WORDS; });
+    var words = 0;
+    open.forEach(function (i) { words += i.word_count || 0; });
     note.textContent =
-      shortWords(totalWords) + " words across " + open.length + " script" +
-      (open.length === 1 ? "" : "s") +
+      plural(open.length, "script") + " open" +
+      (words ? " \u00b7 " + (words >= 1000 ? Math.round(words / 1000) + "k" : words) + " words" : "") +
       (noDate ? " \u00b7 " + noDate + " undated" : "");
 
     // --- buckets: late, then one per day, then everything further out -------
@@ -1278,12 +1265,9 @@
     if (later.items.length) buckets.push(later);
     if (!buckets[0].items.length) buckets.shift();
 
-    buckets.forEach(function (b) {
-      b.total = 0;
-      b.items.forEach(function (i) { b.total += i.word_count || ASSUMED_WORDS; });
-    });
+    buckets.forEach(function (b) { b.total = b.items.length; });
 
-    var max = niceCeil(Math.max.apply(null, buckets.map(function (b) { return b.total; })));
+    var max = Math.max(2, Math.max.apply(null, buckets.map(function (b) { return b.total; })));
     var tallest = buckets.reduce(function (a, b) { return b.total > a.total ? b : a; }, buckets[0]);
 
     // --- axis ---------------------------------------------------------------
@@ -1291,12 +1275,13 @@
     var plotWrap = el("div", "plot-wrap");
     var plot = el("div", "plot");
 
-    [0, 0.5, 1].forEach(function (f) {
-      var line = el("div", "gridline" + (f === 0 ? " base" : ""));
+    axisTicks(max).forEach(function (value) {
+      var f = value / max;
+      var line = el("div", "gridline" + (value === 0 ? " base" : ""));
       line.style.bottom = (f * 100) + "%";
       plot.appendChild(line);
 
-      var tick = el("div", "ytick", f === 0 ? "0" : shortWords(Math.round(max * f)));
+      var tick = el("div", "ytick", String(value));
       tick.style.bottom = (f * 100) + "%";
       yAxis.appendChild(tick);
     });
@@ -1312,20 +1297,17 @@
 
       var stack = el("div", "stack");
       stack.style.height = ((bucket.total / max) * 100) + "%";
-      bucket.items
-        .slice()
-        .sort(function (a, b) { return (b.word_count || 0) - (a.word_count || 0); })
-        .forEach(function (item) {
-          var words = item.word_count || ASSUMED_WORDS;
-          var seg = el("div", "seg" + (item.word_count ? "" : " unknown"));
-          seg.style.height = ((words / bucket.total) * 100) + "%";
-          stack.appendChild(seg);
-        });
+      // One equal block per script, so a column can be counted as well as read.
+      bucket.items.forEach(function () {
+        var seg = el("div", "seg");
+        seg.style.height = (100 / bucket.total) + "%";
+        stack.appendChild(seg);
+      });
       col.appendChild(stack);
 
       // One direct label, on the busiest column; the axis carries the rest.
       if (bucket === tallest && bucket.total > 0) {
-        var cap = el("div", "col-cap", shortWords(bucket.total));
+        var cap = el("div", "col-cap", String(bucket.total));
         cap.style.bottom = "calc(" + ((bucket.total / max) * 100) + "% + 4px)";
         col.appendChild(cap);
       }
@@ -1336,14 +1318,15 @@
           tip.appendChild(
             el("b", null,
               (bucket.late ? "Overdue" : bucket.full || bucket.label) +
-              " \u00b7 " + shortWords(bucket.total) + " words")
+              " \u00b7 " + plural(bucket.total, "script"))
           );
           var list = el("ul");
           bucket.items.forEach(function (item) {
             var li = el("li");
             li.appendChild(document.createTextNode(titleOf(item)));
             li.appendChild(
-              el("span", null, item.word_count ? item.word_count.toLocaleString() : "no count")
+              el("span", null,
+                item.word_count ? item.word_count.toLocaleString() + "w" : "\u2014")
             );
             list.appendChild(li);
           });
@@ -1388,10 +1371,6 @@
       entry.appendChild(document.createTextNode(pair[1]));
       legend.appendChild(entry);
     });
-    var hatched = open.some(function (i) { return !i.word_count; });
-    if (hatched) {
-      legend.appendChild(el("span", null, "hatched = no word count in the brief"));
-    }
     plotWrap.appendChild(legend);
   }
 

@@ -552,10 +552,11 @@ python -m scriptcheck dashboard -i data/threads.json -o site/index.html
 ```
 
 The page leads with the single next deadline — a ticking timecode when it is
-inside 24 hours — then a **words due** chart: columns of how much
-writing is owed each day, with everything overdue collected in one column at the
-left. It answers how *much* is coming, not just when - two scripts on Thursday is
-a different day from one. Below that, count tiles that double as filters, a **Needs you now** list carrying the
+inside 24 hours — then a **scripts due** chart: a column per day
+counting what is owed, with everything overdue collected in one column at the
+left and anything past the window in "Later". Each script is its own block, so a
+column can be counted as well as read, and two scripts on Thursday is visibly a
+different Thursday from one. Below that, count tiles that double as filters, a **Needs you now** list carrying the
 warnings, and a table of everything with search and sort. Deadlines are formatted in your `display_timezone`
 whatever machine opens it, and **statuses are recomputed in the browser** — so a
 page built this morning still shows a correct countdown tonight, and a `PENDING`
