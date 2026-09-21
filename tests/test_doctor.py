@@ -296,3 +296,71 @@ class TestDotenv(unittest.TestCase):
 
         load_dotenv(self.write("SCRIPTCHECK_WEBHOOK_URL=https://x.com/a?b=c&d=e\n"))
         self.assertEqual(os.environ["SCRIPTCHECK_WEBHOOK_URL"], "https://x.com/a?b=c&d=e")
+
+
+class TestSetupWizard(unittest.TestCase):
+    """The wizard writes the two files a first run needs."""
+
+    def test_env_has_every_variable_the_daemon_reads(self):
+        from scriptcheck.setup import build_env
+
+        text = build_env("tok", "123", "https://hook", "acc")
+        for key in (
+            "DISCORD_BOT_TOKEN",
+            "SCRIPTCHECK_MY_USER_ID",
+            "SCRIPTCHECK_WEBHOOK_URL",
+            "SCRIPTCHECK_ACCESS_TOKEN",
+        ):
+            self.assertIn(f"{key}=", text)
+        self.assertIn("DISCORD_BOT_TOKEN=tok", text)
+
+    def test_an_access_token_is_generated_when_absent(self):
+        from scriptcheck.setup import build_env, read_env_value
+
+        import tempfile
+        from pathlib import Path
+
+        path = Path(tempfile.mkdtemp()) / ".env"
+        path.write_text(build_env("tok", "123"))
+        generated = read_env_value(path, "SCRIPTCHECK_ACCESS_TOKEN")
+        self.assertGreaterEqual(len(generated), 20)
+
+    def test_the_env_file_round_trips_through_the_loader(self):
+        import os
+        import tempfile
+        from pathlib import Path
+
+        from scriptcheck.config import load_dotenv
+        from scriptcheck.setup import build_env
+
+        path = Path(tempfile.mkdtemp()) / ".env"
+        path.write_text(build_env("tok", "123", "https://hook?a=b&c=d", "acc"))
+        saved = dict(os.environ)
+        try:
+            os.environ.pop("SCRIPTCHECK_WEBHOOK_URL", None)
+            load_dotenv(path, override=True)
+            self.assertEqual(os.environ["SCRIPTCHECK_WEBHOOK_URL"], "https://hook?a=b&c=d")
+            self.assertEqual(os.environ["DISCORD_BOT_TOKEN"], "tok")
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+
+    def test_the_config_it_writes_is_valid_and_in_dropbox_mode(self):
+        from scriptcheck.config import Config
+        from scriptcheck.setup import build_config
+
+        config = Config.from_dict(build_config("my-assignments", "America/New_York"))
+        self.assertEqual(config.dropbox_channel_patterns, ["my-assignments"])
+        self.assertTrue(config.dropbox_matches("my-assignments", "1"))
+        # Drop-box mode must not also scan the rest of the personal server.
+        self.assertFalse(config.channel_matches("general", "2"))
+        self.assertEqual(config.display_timezone, "America/New_York")
+
+    def test_a_custom_channel_and_timezone_are_carried_through(self):
+        from scriptcheck.config import Config
+        from scriptcheck.setup import build_config
+
+        config = Config.from_dict(build_config("briefs", "Europe/London"))
+        self.assertTrue(config.dropbox_matches("briefs", "1"))
+        self.assertEqual(config.default_timezone, "Europe/London")
+        self.assertEqual(config.assume_time_obj.hour, 23)

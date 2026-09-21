@@ -80,7 +80,24 @@ Deadlines are never guessed. The date in the thread title (`09-25-26`) is the
 publish slate, not your deadline, and is deliberately ignored — a thread with no
 readable deadline is reported as `NO_DEADLINE` rather than quietly assumed safe.
 
-## Setup
+## Start here
+
+```bash
+git clone https://github.com/joshjrath/Scriptwritingchecker.git
+cd Scriptwritingchecker
+bash start.command
+```
+
+That is the whole thing. It installs what it needs, asks four questions
+(Application ID, bot token, your user ID, which channel), writes the config,
+checks the bot can see everything, and opens the board. Run it again any time
+to start the board — it only asks once.
+
+On a Mac you can also just double-click `start.command` in Finder.
+
+Everything below is reference for when you want to change something.
+
+## Setup (by hand)
 
 ```bash
 git clone https://github.com/joshjrath/Scriptwritingchecker.git

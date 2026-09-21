@@ -130,6 +130,16 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_setup(args) -> int:
+    from .setup import run
+
+    try:
+        return run()
+    except (KeyboardInterrupt, EOFError):
+        print("\nStopped. Nothing was written.")
+        return 1
+
+
 def cmd_serve(args) -> int:
     from .live import serve
 
@@ -320,6 +330,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit the page without the <html>/<body> wrapper, for embedding.",
     )
     dashboard.set_defaults(func=cmd_dashboard)
+
+    setup = sub.add_parser(
+        "setup", help="Interactive first-run setup. Start here."
+    )
+    setup.set_defaults(func=cmd_setup)
 
     serve = sub.add_parser(
         "serve",
