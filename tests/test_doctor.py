@@ -364,3 +364,63 @@ class TestSetupWizard(unittest.TestCase):
         self.assertTrue(config.dropbox_matches("briefs", "1"))
         self.assertEqual(config.default_timezone, "Europe/London")
         self.assertEqual(config.assume_time_obj.hour, 23)
+
+
+class TestDropboxPreflight(unittest.TestCase):
+    """The preflight has to see the drop-box channel it is checking."""
+
+    CONFIG = Config(
+        my_user_ids=["111111111111111111"],
+        my_roles=["SCRIPT"],
+        dropbox_channel_patterns=["my-assignments"],
+    )
+
+    def facts(self, **overrides):
+        base = Facts(
+            logged_in=True,
+            bot_name="ScriptTracker#9101",
+            bot_id="999",
+            guilds=[{"id": "900", "name": "Script Tracker"}],
+            channels=[
+                {
+                    "id": "901",
+                    "name": "my-assignments",
+                    "can_view": True,
+                    "can_read_history": True,
+                    "can_create_threads": True,
+                    "dropbox": True,
+                }
+            ],
+            threads_seen=0,
+            messages_sampled=0,
+            my_ids_seen={"111111111111111111"},
+        )
+        for key, value in overrides.items():
+            setattr(base, key, value)
+        return base
+
+    def test_an_empty_dropbox_channel_is_not_a_failure(self):
+        checks = diagnose(self.facts(), self.CONFIG)
+        by_name = {c.name: c for c in checks}
+        self.assertNotIn("Assignment channels", by_name)
+        self.assertEqual(by_name["Channel access"].status, PASS)
+        # No briefs forwarded yet is expected, not broken.
+        self.assertEqual(by_name["Forwarded briefs"].status, WARN)
+        self.assertFalse([c for c in checks if c.status == FAIL])
+
+    def test_missing_thread_permission_is_caught(self):
+        facts = self.facts()
+        facts.channels[0]["can_create_threads"] = False
+        by_name = {c.name: c for c in diagnose(facts, self.CONFIG)}
+        self.assertEqual(by_name["Thread creation"].status, FAIL)
+        self.assertIn("Create Public Threads", by_name["Thread creation"].fix)
+
+    def test_the_advice_is_about_forwarding_not_about_admins(self):
+        by_name = {c.name: c for c in diagnose(self.facts(channels=[]), self.CONFIG)}
+        self.assertIn("forward a brief", by_name["Assignment channels"].fix)
+        self.assertNotIn("admin", by_name["Assignment channels"].fix)
+
+    def test_once_a_brief_is_forwarded_everything_passes(self):
+        facts = self.facts(threads_seen=1, messages_sampled=3, messages_with_content=3)
+        checks = diagnose(facts, self.CONFIG)
+        self.assertTrue(all(c.status == PASS for c in checks), [c.name for c in checks if c.status != PASS])

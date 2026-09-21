@@ -166,6 +166,22 @@ def diagnose(facts: Facts, config: Config) -> list[Check]:
             )
         )
 
+    if config.dropbox_channel_patterns:
+        boxes = [c for c in facts.channels if c.get("dropbox") and c.get("can_view")]
+        without_threads = [c for c in boxes if not c.get("can_create_threads", True)]
+        if without_threads:
+            checks.append(
+                Check(
+                    "Thread creation",
+                    FAIL,
+                    "Cannot open threads in "
+                    + ", ".join("#" + c["name"] for c in without_threads),
+                    "The bot opens a thread on each forwarded brief so deliveries "
+                    "have somewhere to go. Give its role Create Public Threads on "
+                    "that channel, or re-invite it with the --dropbox link.",
+                )
+            )
+
     # --- threads -------------------------------------------------------------
     if facts.threads_seen == 0 and config.dropbox_channel_patterns:
         checks.append(
@@ -343,7 +359,12 @@ def collect(config: Config, token: Optional[str] = None) -> Facts:  # pragma: no
                 for channel in guild.channels:
                     if not isinstance(channel, (dc.TextChannel, dc.ForumChannel)):
                         continue
-                    if not config.channel_matches(channel.name, str(channel.id)):
+                    # Both modes, or drop-box channels are invisible to the
+                    # very check meant to confirm the bot can read them.
+                    if not (
+                        config.channel_matches(channel.name, str(channel.id))
+                        or config.dropbox_matches(channel.name, str(channel.id))
+                    ):
                         continue
                     perms = channel.permissions_for(me)
                     facts.channels.append(
@@ -352,6 +373,10 @@ def collect(config: Config, token: Optional[str] = None) -> Facts:  # pragma: no
                             "name": channel.name,
                             "can_view": bool(perms.view_channel),
                             "can_read_history": bool(perms.read_message_history),
+                            "can_create_threads": bool(perms.create_public_threads),
+                            "dropbox": config.dropbox_matches(
+                                channel.name, str(channel.id)
+                            ),
                         }
                     )
                     if not (perms.view_channel and perms.read_message_history):
