@@ -276,7 +276,19 @@ class TestProjectParsing(unittest.TestCase):
     def test_the_show_tag_is_picked_up(self):
         from scriptcheck.parsing import parse_project
 
-        self.assertEqual(parse_project(BRIEF.replace("SCRIPT", "@ UTDR\n\nSCRIPT", 1)), "UTDR")
+        self.assertEqual(parse_project("\U0001f4c1 Project\nTBD\n\n@ UTDR\n"), "UTDR")
+
+    def test_a_decorated_tag_line_still_counts(self):
+        from scriptcheck.parsing import parse_project
+
+        # These briefs prefix everything with an emoji.
+        self.assertEqual(parse_project("\U0001f4fa @ UTDR\n"), "UTDR")
+
+    def test_a_person_mention_is_not_a_project(self):
+        from scriptcheck.parsing import parse_project
+
+        self.assertEqual(parse_project("@Josh\n"), "")
+        self.assertEqual(parse_project("\u2022 @Maria\n"), "")
 
     def test_a_named_project_beats_the_tag(self):
         from scriptcheck.parsing import parse_project

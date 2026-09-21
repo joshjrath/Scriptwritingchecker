@@ -668,8 +668,12 @@ RE_PROJECT_LABEL = re.compile(
     re.IGNORECASE,
 )
 
-#: A line that is only a handle, e.g. "@ UTDR" - how these briefs tag the show.
-RE_SHOW_TAG = re.compile(r"^\s*@\s*(?P<value>[A-Za-z0-9][A-Za-z0-9 _.\-]{0,30})\s*$")
+#: A line that is only a handle, e.g. "@ UTDR" or "\U0001f4fa @ UTDR" - how
+#: these briefs tag the show. The space after @ is required on purpose: it is
+#: what separates a show tag from a mention like "@Josh", which is a person.
+RE_SHOW_TAG = re.compile(
+    r"^[^\w@]*@\s+(?P<value>[A-Za-z0-9][A-Za-z0-9 _.\-]{0,30})\s*$"
+)
 
 #: Values that mean "not filled in yet".
 PLACEHOLDERS = {"tbd", "tba", "n/a", "na", "none", "-", "--", "?", "xxx"}
