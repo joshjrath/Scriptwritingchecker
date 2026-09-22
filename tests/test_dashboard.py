@@ -279,3 +279,64 @@ class TestPostingDate(unittest.TestCase):
         # deadline; it now has its own chip so the two are never confused.
         self.assertNotIn('"airs "', self.html)
         self.assertIn('"postdate"', self.html)
+
+
+class TestBriefs(unittest.TestCase):
+    """The forwarded brief, shown as received - and only to the owner."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+
+    def test_the_forwarded_text_is_captured(self):
+        texts = [i.brief_text for i in self.items if i.brief_text]
+        self.assertTrue(texts, "no brief text captured at all")
+        # It is the opening message verbatim, so the title line is still in it.
+        item = next(i for i in self.items if i.brief_text and i.thread_name)
+        self.assertIn(item.thread_name.strip(), item.brief_text)
+
+    def test_the_owner_payload_carries_it(self):
+        payload = build_payload(self.items, CONFIG, now=NOW, can_edit=True)
+        self.assertTrue(any(r.get("brief_text") for r in payload["assignments"]))
+
+    def test_a_read_only_viewer_never_receives_it(self):
+        # Absent from the JSON, not merely hidden in the UI: /audit and
+        # /explain are owner-only for the same reason.
+        payload = build_payload(self.items, CONFIG, now=NOW, can_edit=False)
+        for row in payload["assignments"]:
+            self.assertNotIn("brief_text", row)
+
+    def test_it_is_absent_from_the_html_a_viewer_is_served(self):
+        body = next(i.brief_text for i in self.items if i.brief_text)
+        needle = max((line.strip() for line in body.splitlines()), key=len)
+        self.assertGreater(len(needle), 20, "need a distinctive probe line")
+        self.assertIn(needle, render_dashboard(self.items, CONFIG, now=NOW, can_edit=True))
+        self.assertNotIn(needle, render_dashboard(self.items, CONFIG, now=NOW, can_edit=False))
+
+    def test_stripping_does_not_mutate_the_original(self):
+        from scriptcheck.dashboard import without_briefs
+
+        payload = build_payload(self.items, CONFIG, now=NOW, can_edit=True)
+        stripped = without_briefs(payload)
+        self.assertFalse(any("brief_text" in r for r in stripped["assignments"]))
+        self.assertTrue(any("brief_text" in r for r in payload["assignments"]))
+
+    def test_a_brief_cannot_break_out_of_the_data_block(self):
+        from scriptcheck.models import Assignment
+
+        hostile = Assignment(
+            thread_id="1",
+            thread_name="09-25-26 | VIDEO-001 | Test",
+            brief_text='</script><script>alert("x")</script>',
+        )
+        html = render_dashboard([hostile], CONFIG, now=NOW, can_edit=True)
+        self.assertNotIn('</script><script>alert("x")', html)
+
+    def test_the_tab_exists_and_starts_on_the_board(self):
+        html = render_dashboard(self.items, CONFIG, now=NOW, can_edit=True)
+        self.assertIn('id="tab-briefs"', html)
+        self.assertIn('id="tab-briefs-btn"', html)
+        self.assertIn('id="tab-board"', html)
+        # The wrapper has to carry main's column layout or the sections
+        # underneath it all collapse together.
+        self.assertIn("#tab-board { display: flex;", html)

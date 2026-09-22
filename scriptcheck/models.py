@@ -301,6 +301,9 @@ class Assignment:
     overridden: list[str] = field(default_factory=list)
     #: Set on a repeat forward: the thread ID this duplicates.
     duplicate_of: str = ""
+    #: The opening message exactly as forwarded, kept so the board can show
+    #: the brief it read rather than only what it made of it.
+    brief_text: str = ""
 
     @property
     def needs_review(self) -> bool:
@@ -353,6 +356,7 @@ class Assignment:
             "evidence": dict(self.evidence),
             "overridden": list(self.overridden),
             "duplicate_of": self.duplicate_of,
+            "brief_text": self.brief_text,
             "needs_review": self.needs_review,
         }
 

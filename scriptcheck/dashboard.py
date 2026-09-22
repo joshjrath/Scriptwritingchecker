@@ -57,6 +57,10 @@ def build_payload(
     for item in assignments:
         row = item.to_dict()
         row["status_label"] = STATUS_LABEL[item.status]
+        if not can_edit:
+            # See without_briefs(): a read-only viewer never receives the
+            # brief text, only what the parser made of it.
+            row.pop("brief_text", None)
         if redact_links:
             # Keep the fact of delivery, drop the URL itself.
             for submission in row["submissions"]:
@@ -76,6 +80,23 @@ def build_payload(
         "can_edit": can_edit,
         "assignments": rows,
     }
+
+
+def without_briefs(payload: dict) -> dict:
+    """A copy of the payload with the forwarded brief text removed.
+
+    /audit and /explain are owner-only because a brief quoted in full is more
+    than a status board should hand out, and the same applies to a read-only
+    share link. The text is absent from the JSON rather than hidden in the UI,
+    so it is not sitting in the page source waiting to be read.
+    """
+
+    out = dict(payload)
+    out["assignments"] = [
+        {key: value for key, value in row.items() if key != "brief_text"}
+        for row in payload.get("assignments", [])
+    ]
+    return out
 
 
 def render_dashboard(

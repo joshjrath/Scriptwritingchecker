@@ -119,6 +119,7 @@ def build_assignment(thread: Thread, config: Config, now: Optional[datetime] = N
 
     opening = thread.opening_post
     body = opening.content if opening else ""
+    assignment.brief_text = body
     assignment.project = parse_project(body)
     assignment.assigned_at = (opening.created_at if opening else None) or thread.created_at
     sections = split_role_sections(body, config.known_roles)

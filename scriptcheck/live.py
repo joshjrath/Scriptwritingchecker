@@ -22,6 +22,7 @@ from .overrides import clear_delivery, record_delivery
 from .config import Config
 from .dashboard import render_dashboard
 from .models import Attachment, Author, Message, Thread
+from .dashboard import without_briefs
 from .state import BoardState
 
 log = logging.getLogger("scriptcheck.live")
@@ -211,7 +212,8 @@ class LiveBoard:
         variants = {}
         for can_edit in (True, False):
             payload["can_edit"] = can_edit
-            variants[can_edit] = json.dumps(payload, ensure_ascii=False)
+            shaped = payload if can_edit else without_briefs(payload)
+            variants[can_edit] = json.dumps(shaped, ensure_ascii=False)
 
         dead = []
         for queue, can_edit in list(self.subscribers.items()):
@@ -289,7 +291,10 @@ class LiveBoard:
 
     async def handle_report(self, request):
         payload = self.state.payload()
-        payload["can_edit"] = request.get("role", "owner") == "owner"
+        can_edit = request.get("role", "owner") == "owner"
+        payload["can_edit"] = can_edit
+        if not can_edit:
+            payload = without_briefs(payload)
         return self.web.json_response(payload)
 
     async def handle_audit(self, request):
