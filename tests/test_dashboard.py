@@ -227,3 +227,55 @@ class TestMotion(unittest.TestCase):
         sweep = self.css.split(".card.pulsing:not(.gentle)::after", 1)[1].split("}", 1)[0]
         self.assertIn("var(--tone", sweep)
         self.assertIn("var(--sheen-strength", sweep)
+
+
+class TestPostingDate(unittest.TestCase):
+    """The first date in the brief title: when the video actually goes out."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.html = render_dashboard(cls.items, CONFIG, now=NOW)
+
+    def test_it_reaches_the_payload_as_a_plain_calendar_date(self):
+        payload = build_payload(self.items, CONFIG, now=NOW)
+        dates = [i["slate_date"] for i in payload["assignments"] if i.get("slate_date")]
+        self.assertTrue(dates, "fixture should carry posting dates")
+        for value in dates:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            # Midnight UTC, because a posting date is a day, not a moment.
+            self.assertEqual((parsed.hour, parsed.minute), (0, 0))
+
+    def test_it_is_parsed_from_the_leading_date_in_the_title(self):
+        for item in self.items:
+            if item.slate_date and "|" in item.thread_name:
+                lead = item.thread_name.split("|")[0].strip()
+                month, day, _ = lead.split("-")
+                self.assertEqual(item.slate_date.month, int(month))
+                self.assertEqual(item.slate_date.day, int(day))
+
+    def test_the_table_has_its_own_column(self):
+        self.assertIn(">Posts</th>", self.html)
+
+    def test_the_empty_row_spans_every_column(self):
+        # Adding a column and forgetting the colSpan leaves the "nothing
+        # matches" row short, which looks like a broken table.
+        headers = re.findall(r'<th scope="col">', self.html)
+        span = re.search(r"td\.colSpan = (\d+);", self.html)
+        self.assertIsNotNone(span)
+        self.assertEqual(int(span.group(1)), len(headers))
+
+    def test_it_is_formatted_in_utc_so_the_day_never_slips(self):
+        # Rendering a midnight-UTC date in a behind-UTC zone would show the
+        # previous day, which is the whole reason this formatter is pinned.
+        fmt_decl = re.search(r"slateLongFmt = new Intl\.DateTimeFormat\([^)]*\)",
+                             self.html, re.S)
+        self.assertIsNotNone(fmt_decl)
+        self.assertIn('timeZone: "UTC"', fmt_decl.group(0))
+        self.assertIn("weekday", fmt_decl.group(0))
+
+    def test_it_is_not_tangled_into_the_deadline_run(self):
+        # It used to be an "airs Sep 23" fragment in the same grey line as the
+        # deadline; it now has its own chip so the two are never confused.
+        self.assertNotIn('"airs "', self.html)
+        self.assertIn('"postdate"', self.html)

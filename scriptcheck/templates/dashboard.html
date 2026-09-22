@@ -677,6 +677,52 @@
     color: var(--ink-2);
     background: var(--panel-3);
   }
+  /* The posting date is a different kind of fact from the deadline: one is
+     when the video goes out, the other is when it is owed. They were running
+     together in the same grey line, so the posting date gets its own chip and
+     its own label, and never borrows the urgency colours. */
+  .postdate {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-2);
+    background: var(--panel-3);
+    border: 1px solid var(--stroke-2);
+    border-left: 2px solid var(--accent);
+    border-radius: 4px;
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+  .postdate b {
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: .12em;
+    color: var(--muted);
+  }
+  .postdate.soon { color: var(--ink); border-left-color: var(--accent); }
+  .postdate.soon b { color: var(--accent); }
+  .postdate.past { border-left-color: var(--stroke-2); opacity: .65; }
+
+  .t-post {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--ink-2);
+  }
+  .t-post.soon { color: var(--ink); font-weight: 500; }
+  .t-post.past { color: var(--muted); }
+  .t-post span {
+    display: block;
+    font-size: 10.5px;
+    color: var(--muted);
+    letter-spacing: .03em;
+    margin-top: 3px;
+  }
+  .t-post.soon span { color: var(--accent); }
+
   .warn {
     margin: 10px 0 0;
     font-size: 13px;
@@ -863,6 +909,17 @@
   .t-name a { color: inherit; text-decoration: none; }
   .t-name a:hover { text-decoration: underline; text-underline-offset: 3px; }
   .t-sub { display: block; font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); margin-top: 4px; letter-spacing: .03em; }
+
+  /* In the real table the slot is the part worth reading, so a long channel
+     name truncates rather than wrapping the line in half. Below the table
+     breakpoint each row is a full-width card and wrapping is fine, so this
+     stays out of the way there. */
+  @media (min-width: 731px) {
+    /* Keeps the seven columns inside the panel; the title wraps instead of
+       pushing Delivered off the edge. */
+    .t-name { max-width: 240px; }
+    .t-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  }
   .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12.5px; }
   .pill {
     display: inline-block;
@@ -1181,7 +1238,7 @@
         <select id="sort" aria-label="Sort assignments">
           <option value="urgency">Sort: urgency</option>
           <option value="deadline">Sort: deadline</option>
-          <option value="slate">Sort: publish date</option>
+          <option value="slate">Sort: posting date</option>
           <option value="title">Sort: title</option>
         </select>
       </div>
@@ -1193,6 +1250,7 @@
           <tr>
             <th scope="col">Status</th>
             <th scope="col">Assignment</th>
+            <th scope="col">Posts</th>
             <th scope="col">Deadline</th>
             <th scope="col">Time</th>
             <th scope="col">Words</th>
@@ -1363,6 +1421,40 @@
   /* A publish slate is a calendar date, not a moment: render it in UTC so it
      does not slip a day when the display timezone is behind. */
   slateFmt = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
+  var slateLongFmt = new Intl.DateTimeFormat("en-US",
+    { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
+
+  /* How many days off the posting date is. The slate is a bare calendar date
+     pinned to midnight UTC, while "today" depends on the zone the viewer
+     picked - so both sides are reduced to a Y-M-D string before subtracting,
+     rather than differencing two instants that mean different things. */
+  function daysUntilSlate(iso, now) {
+    if (!iso) return null;
+    var d = new Date(iso);
+    if (isNaN(d)) return null;
+    function utcFromKey(key) {
+      return Date.UTC(+key.slice(0, 4), +key.slice(5, 7) - 1, +key.slice(8, 10));
+    }
+    return Math.round(
+      (utcFromKey(d.toISOString().slice(0, 10)) - utcFromKey(dayKey(now))) / DAY
+    );
+  }
+
+  function slateWhen(days) {
+    if (days === null) return "";
+    if (days < -1) return Math.abs(days) + " days ago";
+    if (days === -1) return "yesterday";
+    if (days === 0) return "today";
+    if (days === 1) return "tomorrow";
+    if (days <= 13) return "in " + days + " days";
+    return "";
+  }
+
+  function slateClass(days) {
+    if (days === null) return "";
+    if (days < 0) return " past";
+    return days <= 2 ? " soon" : "";
+  }
 
   function fmt(iso, formatter) {
     if (!iso) return "";
@@ -1608,6 +1700,8 @@
     pill.style.setProperty("--tone", META[heroItem.live].tone);
     meta.appendChild(pill);
     if (heroItem.slot) meta.appendChild(el("span", "slate", heroItem.slot));
+    var heroPost = postChip(heroItem, now);
+    if (heroPost) meta.appendChild(heroPost);
     if (heroItem.word_count) meta.appendChild(el("span", null, heroItem.word_count.toLocaleString() + " words"));
     meta.appendChild(el("span", null, "due " + fmt(heroItem.deadline)));
     left.appendChild(meta);
@@ -1879,13 +1973,30 @@
     lastCounts = tally;
   }
 
-  function metaRow(item) {
+  /* The chip both the cards and the hero use, so the posting date reads the
+     same wherever it appears. */
+  function postChip(item, now) {
+    if (!item.slate_date) return null;
+    var days = daysUntilSlate(item.slate_date, now);
+    var chip = el("span", "postdate" + slateClass(days));
+    chip.appendChild(el("b", null, "POSTS"));
+    var when = slateWhen(days);
+    // Spell out the near ones on the chip itself; further out, the date says
+    // it and the wording would only make the chip longer.
+    chip.appendChild(document.createTextNode(
+      fmt(item.slate_date, slateLongFmt) + (when && days <= 2 ? " \u00b7 " + when : "")));
+    if (when) chip.title = "Goes out " + when;
+    return chip;
+  }
+
+  function metaRow(item, now) {
     var row = el("div", "meta");
     if (item.slot) row.appendChild(el("span", "slate", item.slot));
+    var chip = postChip(item, now || new Date());
+    if (chip) row.appendChild(chip);
     var bits = [];
     if (item.word_count) bits.push(item.word_count.toLocaleString() + " words");
     if (item.channel) bits.push("#" + item.channel);
-    if (item.slate_date) bits.push("airs " + fmt(item.slate_date, slateFmt));
     if (item.deadline) bits.push("due " + fmt(item.deadline));
     bits.forEach(function (text) { row.appendChild(el("span", null, text)); });
     return row;
@@ -1937,7 +2048,7 @@
       top.appendChild(clock);
 
       card.appendChild(top);
-      card.appendChild(metaRow(item));
+      card.appendChild(metaRow(item, now));
       (item.warnings || []).forEach(function (w) { card.appendChild(el("p", "warn", w)); });
       var mark = markButton(item);
       if (mark) card.appendChild(mark);
@@ -1994,7 +2105,7 @@
     if (!list.length) {
       var tr = el("tr");
       var td = el("td", null, "Nothing matches that filter.");
-      td.colSpan = 6;
+      td.colSpan = 7;
       td.style.color = "var(--muted)";
       tr.appendChild(td);
       host.appendChild(tr);
@@ -2017,6 +2128,14 @@
       var subBits = [item.slot, item.channel ? "#" + item.channel : ""].filter(Boolean);
       if (subBits.length) name.appendChild(el("span", "t-sub", subBits.join("  ·  ")));
       cell(tr, "Assignment", name);
+
+      var days = daysUntilSlate(item.slate_date, now);
+      var post = el("div", "t-post" + slateClass(days));
+      post.appendChild(document.createTextNode(
+        item.slate_date ? fmt(item.slate_date, slateLongFmt) : "—"));
+      var when = slateWhen(days);
+      if (when) post.appendChild(el("span", null, when));
+      cell(tr, "Posts", post);
 
       cell(tr, "Deadline", el("span", "num", item.deadline ? fmt(item.deadline) : "—"));
 
