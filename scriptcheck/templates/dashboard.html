@@ -681,6 +681,28 @@
      when the video goes out, the other is when it is owed. They were running
      together in the same grey line, so the posting date gets its own chip and
      its own label, and never borrows the urgency colours. */
+  /* Video numbers restart per channel, so the show is the part that actually
+     identifies a script - two different VIDEO-001s is the normal case, not an
+     edge case. It reads before the slot everywhere it appears. */
+  .show {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+    border-radius: 4px;
+    padding: 2px 7px;
+    white-space: nowrap;
+  }
+  .t-sub .show {
+    font-size: 9.5px;
+    padding: 1px 5px;
+    margin-right: 5px;
+  }
+
   .postdate {
     display: inline-flex;
     align-items: baseline;
@@ -1234,11 +1256,13 @@
     <div class="tablehead">
       <p class="eyebrow">Every assignment <span id="count"></span></p>
       <div class="controls">
-        <input id="search" type="search" placeholder="Filter by title, slot or channel" aria-label="Filter assignments">
+        <input id="search" type="search" placeholder="Filter by show, title or slot" aria-label="Filter assignments">
+        <select id="showpick" aria-label="Filter by show" hidden></select>
         <select id="sort" aria-label="Sort assignments">
           <option value="urgency">Sort: urgency</option>
           <option value="deadline">Sort: deadline</option>
           <option value="slate">Sort: posting date</option>
+          <option value="show">Sort: show</option>
           <option value="title">Sort: title</option>
         </select>
       </div>
@@ -1549,7 +1573,7 @@
     return host;
   }
 
-  var state = { filter: null, query: "", sort: "urgency" };
+  var state = { filter: null, query: "", sort: "urgency", show: "" };
   var lastCounts = null;    // previous tile tally, so the numbers can roll
   var lastHeroId = null;    // so the hero only animates when it actually changes
   var lastChartKey = null;  // so columns only re-grow when the buckets change
@@ -1699,6 +1723,8 @@
     var pill = el("span", "pill", META[heroItem.live].label);
     pill.style.setProperty("--tone", META[heroItem.live].tone);
     meta.appendChild(pill);
+    var heroShow = showBadge(heroItem);
+    if (heroShow) meta.appendChild(heroShow);
     if (heroItem.slot) meta.appendChild(el("span", "slate", heroItem.slot));
     var heroPost = postChip(heroItem, now);
     if (heroPost) meta.appendChild(heroPost);
@@ -1975,6 +2001,47 @@
 
   /* The chip both the cards and the hero use, so the posting date reads the
      same wherever it appears. */
+  function showBadge(item) {
+    return item.project ? el("span", "show", item.project) : null;
+  }
+
+  function showsAvailable() {
+    var seen = Object.create(null);
+    var out = [];
+    active().forEach(function (i) {
+      if (i.project && !seen[i.project]) { seen[i.project] = true; out.push(i.project); }
+    });
+    return out.sort();
+  }
+
+  function renderShowPicker() {
+    var picker = document.getElementById("showpick");
+    var shows = showsAvailable();
+    // With one show the name is already on every row; the control only earns
+    // its space once there is something to choose between.
+    picker.hidden = shows.length < 2;
+    if (picker.hidden) { state.show = ""; return; }
+
+    var wanted = state.show;
+    picker.textContent = "";
+    var all = el("option", null, "All shows");
+    all.value = "";
+    picker.appendChild(all);
+    shows.forEach(function (name) {
+      var option = el("option", null, name);
+      option.value = name;
+      picker.appendChild(option);
+    });
+    // A show can disappear between renders (delivered, filtered, re-parsed),
+    // so fall back to all rather than filtering to nothing.
+    picker.value = shows.indexOf(wanted) === -1 ? "" : wanted;
+    state.show = picker.value;
+  }
+
+  function matchesShow(item) {
+    return !state.show || item.project === state.show;
+  }
+
   function postChip(item, now) {
     if (!item.slate_date) return null;
     var days = daysUntilSlate(item.slate_date, now);
@@ -1991,6 +2058,8 @@
 
   function metaRow(item, now) {
     var row = el("div", "meta");
+    var badge = showBadge(item);
+    if (badge) row.appendChild(badge);
     if (item.slot) row.appendChild(el("span", "slate", item.slot));
     var chip = postChip(item, now || new Date());
     if (chip) row.appendChild(chip);
@@ -2065,7 +2134,7 @@
 
   function matchesQuery(item) {
     if (!state.query) return true;
-    return [item.thread_name, item.title, item.slot, item.channel, item.role]
+    return [item.thread_name, item.title, item.project, item.slot, item.channel, item.role]
       .join(" ").toLowerCase().indexOf(state.query) !== -1;
   }
 
@@ -2074,6 +2143,14 @@
     var far = 8.64e15;
     copy.sort(function (a, b) {
       if (state.sort === "title") return (a.title || "").localeCompare(b.title || "");
+      if (state.sort === "show") {
+        // Unnamed shows last, then chronological within each show.
+        var pa = a.project || "\uffff";
+        var pb = b.project || "\uffff";
+        if (pa !== pb) return pa.localeCompare(pb);
+        return (a.slate_date ? +new Date(a.slate_date) : far) -
+               (b.slate_date ? +new Date(b.slate_date) : far);
+      }
       if (state.sort === "slate") {
         return (a.slate_date ? +new Date(a.slate_date) : far) - (b.slate_date ? +new Date(b.slate_date) : far);
       }
@@ -2098,7 +2175,9 @@
     var host = document.getElementById("rows");
     host.textContent = "";
     var pool = active();
-    var list = sorted(pool.filter(function (i) { return matchesFilter(i) && matchesQuery(i); }));
+    var list = sorted(pool.filter(function (i) {
+      return matchesFilter(i) && matchesQuery(i) && matchesShow(i);
+    }));
     document.getElementById("count").textContent =
       list.length + (list.length === pool.length ? "" : " of " + pool.length);
 
@@ -2126,7 +2205,11 @@
       var name = linkedTitle(item, "div");
       name.className = "t-name";
       var subBits = [item.slot, item.channel ? "#" + item.channel : ""].filter(Boolean);
-      if (subBits.length) name.appendChild(el("span", "t-sub", subBits.join("  ·  ")));
+      var sub = el("span", "t-sub");
+      var badge = showBadge(item);
+      if (badge) sub.appendChild(badge);
+      sub.appendChild(document.createTextNode(subBits.join("  ·  ")));
+      if (badge || subBits.length) name.appendChild(sub);
       cell(tr, "Assignment", name);
 
       var days = daysUntilSlate(item.slate_date, now);
@@ -2367,6 +2450,7 @@
     renderTiles(counts());
     renderDuplicates();
     renderChips();
+    renderShowPicker();
     renderUrgent(now);
     renderTable(now);
     if (wasOpen && !document.getElementById("bell").hidden) {
@@ -2403,6 +2487,11 @@
     state.query = e.target.value.trim().toLowerCase();
     renderTable(new Date());
   });
+  document.getElementById("showpick").addEventListener("change", function (e) {
+    state.show = e.target.value;
+    render();
+  });
+
   document.getElementById("sort").addEventListener("change", function (e) {
     state.sort = e.target.value;
     render();
