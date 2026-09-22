@@ -1222,7 +1222,61 @@
   #tab-board { display: flex; flex-direction: column; gap: 22px; }
 
   /* ---------- briefs ---------- */
-  .briefs { display: flex; flex-direction: column; gap: 12px; }
+  .briefs-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .briefs-head .eyebrow { margin: 0; }
+
+  .briefs { display: flex; flex-direction: column; gap: 26px; }
+  .brief-day { display: flex; flex-direction: column; gap: 12px; }
+
+  /* A date rule rather than a boxed header: it should read as a divider in a
+     run of briefs, not as another panel competing with them. */
+  .brief-day-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding-bottom: 2px;
+  }
+  .brief-day-head h2 {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin: 0;
+    white-space: nowrap;
+  }
+  .brief-day-head .rel {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: .04em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .brief-day-head .rule {
+    flex: 1;
+    height: 1px;
+    background: var(--stroke);
+    min-width: 12px;
+  }
+  .brief-day-head .count {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .brief-day.soon .brief-day-head h2 { color: var(--accent); }
+  .brief-day.past .brief-day-head h2 { color: var(--muted); }
+  /* A day whose deadline has gone is not merely old, it is owed. */
+  .brief-day.overdue .brief-day-head h2 { color: var(--critical); }
+  .brief-day.overdue .brief-day-head .rel { color: var(--critical); }
   .brief { padding: 0; overflow: hidden; }
   .brief-head {
     display: flex;
@@ -1388,6 +1442,14 @@
   </div>
 
   <div id="tab-briefs" role="tabpanel" aria-labelledby="tab-briefs-btn" hidden>
+    <div class="briefs-head">
+      <p class="eyebrow">Every brief, verbatim</p>
+      <select id="briefgroup" aria-label="Group briefs by">
+        <option value="deadline">Group: due date</option>
+        <option value="slate">Group: posting date</option>
+        <option value="forwarded">Group: date forwarded</option>
+      </select>
+    </div>
     <div class="briefs" id="briefs"></div>
   </div>
 
@@ -1490,7 +1552,7 @@
     return ITEMS.filter(function (i) { return HIDDEN.indexOf(i.live) === -1; });
   }
 
-  var dateFmt, timeFmt, dayFmt, slateFmt, dayKeyFmt;
+  var dateFmt, timeFmt, dayFmt, dayLongFmt, slateFmt, dayKeyFmt;
 
   /* Intl only spells a zone's letters in the locale that uses them: "IST"
      needs en-IN, "BST" needs en-GB. Formatting stays en-US and only the zone
@@ -1544,6 +1606,7 @@
     };
     timeFmt = makeFmt({ month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }, true);
     dayFmt = makeFmt({ month: "short", day: "numeric" }, true);
+    dayLongFmt = makeFmt({ weekday: "short", month: "short", day: "numeric" }, true);
     dayKeyFmt = makeFmt({ year: "numeric", month: "2-digit", day: "2-digit" }, true);
   }
   buildFormatters();
@@ -1557,16 +1620,22 @@
      pinned to midnight UTC, while "today" depends on the zone the viewer
      picked - so both sides are reduced to a Y-M-D string before subtracting,
      rather than differencing two instants that mean different things. */
+  function utcFromKey(key) {
+    return Date.UTC(+key.slice(0, 4), +key.slice(5, 7) - 1, +key.slice(8, 10));
+  }
+
+  /* Days between a Y-M-D key and the viewer's today. Whole days only, so the
+     answer never depends on the time of day on either side. */
+  function dayDiff(key, now) {
+    if (!key) return null;
+    return Math.round((utcFromKey(key) - utcFromKey(dayKey(now))) / DAY);
+  }
+
   function daysUntilSlate(iso, now) {
     if (!iso) return null;
     var d = new Date(iso);
     if (isNaN(d)) return null;
-    function utcFromKey(key) {
-      return Date.UTC(+key.slice(0, 4), +key.slice(5, 7) - 1, +key.slice(8, 10));
-    }
-    return Math.round(
-      (utcFromKey(d.toISOString().slice(0, 10)) - utcFromKey(dayKey(now))) / DAY
-    );
+    return dayDiff(d.toISOString().slice(0, 10), now);
   }
 
   function slateWhen(days) {
@@ -1678,7 +1747,8 @@
     return host;
   }
 
-  var state = { filter: null, query: "", sort: "urgency", show: "", tab: "board" };
+  var state = { filter: null, query: "", sort: "urgency", show: "", tab: "board",
+                briefGroup: "deadline" };
   var lastCounts = null;    // previous tile tally, so the numbers can roll
   var lastHeroId = null;    // so the hero only animates when it actually changes
   var lastChartKey = null;  // so columns only re-grow when the buckets change
@@ -2557,6 +2627,108 @@
     });
   }
 
+  function briefPanel(item) {
+    var panel = el("article", "brief glass");
+
+    var head = el("div", "brief-head");
+    var badge = showBadge(item);
+    if (badge) head.appendChild(badge);
+    if (item.slot) head.appendChild(el("span", "slate", item.slot));
+    head.appendChild(linkedTitle(item, "h3"));
+    var pill = el("span", "pill", META[item.live].label);
+    pill.style.setProperty("--tone", META[item.live].tone);
+    head.appendChild(pill);
+    panel.appendChild(head);
+
+    // textContent, so a brief containing markup is shown, never run.
+    panel.appendChild(el("pre", "brief-body", item.brief_text));
+
+    var foot = el("div", "brief-foot");
+    function note(label, value) {
+      if (!value) return;
+      var span = el("span");
+      span.appendChild(el("b", null, label + " "));
+      span.appendChild(document.createTextNode(value));
+      foot.appendChild(span);
+    }
+    note("forwarded", item.assigned_at ? fmt(item.assigned_at, timeFmt) : "");
+    // The exact string the deadline was read from: the most error-prone
+    // extraction, so it is worth putting next to the text it came from.
+    note("read deadline as", item.deadline_raw || "(nothing found)");
+    note("read words as", item.word_count ? item.word_count.toLocaleString() : "(nothing found)");
+    if (foot.childNodes.length) panel.appendChild(foot);
+
+    return panel;
+  }
+
+  /* Bucket the briefs under one day each. The two groupings are different
+     kinds of date and are ordered accordingly: a posting schedule reads
+     forwards like a calendar, an inbox reads newest first. */
+  var BRIEF_GROUPS = {
+    deadline:  { field: "deadline",    empty: "No deadline",     newestFirst: false },
+    slate:     { field: "slate_date",  empty: "No posting date", newestFirst: false },
+    forwarded: { field: "assigned_at", empty: "Undated",         newestFirst: true }
+  };
+
+  function groupBriefs(items) {
+    var mode = state.briefGroup;
+    var spec = BRIEF_GROUPS[mode] || BRIEF_GROUPS.deadline;
+    var buckets = {};
+    var order = [];
+
+    items.forEach(function (item) {
+      var date = item[spec.field] ? new Date(item[spec.field]) : null;
+      if (date && isNaN(date)) date = null;
+      /* A posting date is a bare calendar day already pinned to midnight UTC,
+         so it is read back in UTC. A deadline and a forwarding time are real
+         instants, so they fall on whichever day they land on in the zone the
+         viewer picked - an 11:59 PM ET deadline moves to the next day when
+         read from Kolkata, which is correct. */
+      var key = !date ? ""
+        : mode === "slate" ? date.toISOString().slice(0, 10)
+        : dayKey(date);
+      if (!buckets[key]) {
+        buckets[key] = { key: key, date: date, items: [] };
+        order.push(buckets[key]);
+      }
+      buckets[key].items.push(item);
+    });
+
+    order.sort(function (a, b) {
+      if (!a.key) return 1;          // undated last, whichever way the rest runs
+      if (!b.key) return -1;
+      // A schedule of work reads forwards; an inbox reads newest first.
+      return spec.newestFirst ? b.key.localeCompare(a.key) : a.key.localeCompare(b.key);
+    });
+    return { buckets: order, spec: spec, mode: mode };
+  }
+
+  function briefDayHead(bucket, grouping, now) {
+    var head = el("div", "brief-day-head");
+    var slate = grouping.mode === "slate";
+
+    head.appendChild(el("h2", null, !bucket.date
+      ? grouping.spec.empty
+      : fmt(bucket.date.toISOString(), slate ? slateLongFmt : dayLongFmt)));
+
+    var days = bucket.key ? dayDiff(bucket.key, now) : null;
+    // "3 days ago" is the right reading for a date that has passed; for a
+    // deadline that has passed the word is overdue.
+    var when = days !== null && days < 0 && grouping.mode === "deadline"
+      ? "overdue"
+      : slateWhen(days);
+    if (when) head.appendChild(el("span", "rel", when));
+
+    head.appendChild(el("span", "rule"));
+    head.appendChild(el("span", "count",
+      bucket.items.length + (bucket.items.length === 1 ? " brief" : " briefs")));
+
+    var tone = days === null ? ""
+      : days < 0 ? (grouping.mode === "deadline" ? " overdue" : " past")
+      : days <= 2 ? " soon" : "";
+    return { node: head, tone: tone };
+  }
+
   function renderBriefs() {
     var host = document.getElementById("briefs");
     var button = document.getElementById("tab-briefs-btn");
@@ -2575,39 +2747,14 @@
     button.appendChild(el("span", "n", String(items.length)));
 
     host.textContent = "";
-    items.forEach(function (item) {
-      var panel = el("article", "brief glass");
-
-      var head = el("div", "brief-head");
-      var badge = showBadge(item);
-      if (badge) head.appendChild(badge);
-      if (item.slot) head.appendChild(el("span", "slate", item.slot));
-      head.appendChild(linkedTitle(item, "h3"));
-      var pill = el("span", "pill", META[item.live].label);
-      pill.style.setProperty("--tone", META[item.live].tone);
-      head.appendChild(pill);
-      panel.appendChild(head);
-
-      // textContent, so a brief containing markup is shown, never run.
-      panel.appendChild(el("pre", "brief-body", item.brief_text));
-
-      var foot = el("div", "brief-foot");
-      function note(label, value) {
-        if (!value) return;
-        var span = el("span");
-        span.appendChild(el("b", null, label + " "));
-        span.appendChild(document.createTextNode(value));
-        foot.appendChild(span);
-      }
-      note("forwarded", item.assigned_at ? fmt(item.assigned_at, timeFmt) : "");
-      // The exact string the deadline was read from: the most error-prone
-      // extraction, so it is worth putting next to the text it came from.
-      note("read deadline as", item.deadline_raw || "(nothing found)");
-      note("read words as", item.word_count ? item.word_count.toLocaleString() : "(nothing found)");
-      note("thread", item.thread_name);
-      if (foot.childNodes.length) panel.appendChild(foot);
-
-      host.appendChild(panel);
+    var now = new Date();
+    var grouping = groupBriefs(items);
+    grouping.buckets.forEach(function (bucket) {
+      var head = briefDayHead(bucket, grouping, now);
+      var day = el("div", "brief-day" + head.tone);
+      day.appendChild(head.node);
+      bucket.items.forEach(function (item) { day.appendChild(briefPanel(item)); });
+      host.appendChild(day);
     });
   }
 
@@ -2671,6 +2818,11 @@
     state.query = e.target.value.trim().toLowerCase();
     renderTable(new Date());
   });
+  document.getElementById("briefgroup").addEventListener("change", function (e) {
+    state.briefGroup = e.target.value;
+    renderBriefs();
+  });
+
   document.getElementById("tab-board-btn").addEventListener("click", function () {
     setTab("board");
   });

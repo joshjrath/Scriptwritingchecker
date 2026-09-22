@@ -141,7 +141,7 @@ class TestTimezonePicker(unittest.TestCase):
     def test_switching_zones_rebuilds_every_formatter(self):
         # Each of these renders a visible time; one left out of the rebuild
         # would silently keep showing the old zone.
-        for name in ("dateFmt", "timeFmt", "dayFmt", "dayKeyFmt"):
+        for name in ("dateFmt", "timeFmt", "dayFmt", "dayLongFmt", "dayKeyFmt"):
             self.assertRegex(self.html, r"\b%s\s*=" % name)
 
     def test_deadlines_reach_the_page_as_instants(self):
@@ -340,3 +340,43 @@ class TestBriefs(unittest.TestCase):
         # The wrapper has to carry main's column layout or the sections
         # underneath it all collapse together.
         self.assertIn("#tab-board { display: flex;", html)
+
+
+class TestBriefGrouping(unittest.TestCase):
+    """Briefs sit under a day heading; which day is the user's choice."""
+
+    @classmethod
+    def setUpClass(cls):
+        items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.html = render_dashboard(items, CONFIG, now=NOW, can_edit=True)
+
+    def test_due_date_is_the_default_grouping(self):
+        self.assertIn('briefGroup: "deadline"', self.html)
+        # and it is the first option, so the select shows it unset
+        options = re.findall(r'<option value="(\w+)">Group: ([^<]+)</option>', self.html)
+        self.assertEqual(options[0], ("deadline", "due date"))
+
+    def test_all_three_groupings_are_offered(self):
+        for value in ("deadline", "slate", "forwarded"):
+            self.assertIn('<option value="%s">Group:' % value, self.html)
+            self.assertRegex(self.html, r"%s:\s*\{ field:" % value)
+
+    def test_each_grouping_reads_the_right_field(self):
+        spec = self.html.split("var BRIEF_GROUPS", 1)[1].split("};", 1)[0]
+        self.assertIn('field: "deadline"', spec)
+        self.assertIn('field: "slate_date"', spec)
+        self.assertIn('field: "assigned_at"', spec)
+
+    def test_only_the_inbox_reads_newest_first(self):
+        spec = self.html.split("var BRIEF_GROUPS", 1)[1].split("};", 1)[0]
+        # A schedule of work reads forwards; only "forwarded" is an inbox.
+        self.assertEqual(spec.count("newestFirst: true"), 1)
+        self.assertEqual(spec.count("newestFirst: false"), 2)
+
+    def test_a_posting_date_is_bucketed_in_utc_and_the_rest_by_the_viewers_day(self):
+        # A posting date is a bare calendar day pinned to midnight UTC, so
+        # reading it back in a behind-UTC zone would move every brief a day.
+        # A deadline is a real instant and should move with the zone.
+        body = self.html.split("function groupBriefs", 1)[1].split("\n  }", 1)[0]
+        self.assertIn('mode === "slate" ? date.toISOString().slice(0, 10)', body)
+        self.assertIn("dayKey(date)", body)
