@@ -380,3 +380,43 @@ class TestBriefGrouping(unittest.TestCase):
         body = self.html.split("function groupBriefs", 1)[1].split("\n  }", 1)[0]
         self.assertIn('mode === "slate" ? date.toISOString().slice(0, 10)', body)
         self.assertIn("dayKey(date)", body)
+
+
+class TestPastBriefs(unittest.TestCase):
+    """Delivered briefs are reference, not work: they sit in a disclosure."""
+
+    @classmethod
+    def setUpClass(cls):
+        items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.html = render_dashboard(items, CONFIG, now=NOW, can_edit=True)
+
+    def test_delivered_briefs_are_split_out(self):
+        self.assertIn("function isDelivered", self.html)
+        self.assertIn("items.filter(isDelivered)", self.html)
+        self.assertIn('items.filter(function (i) { return !isDelivered(i); })', self.html)
+
+    def test_it_starts_collapsed(self):
+        # No open attribute on the details element.
+        block = self.html.split('id="past-briefs"', 1)[1].split(">", 1)[0]
+        self.assertNotIn("open", block)
+
+    def test_the_disclosure_outlives_the_list_it_sits_beside(self):
+        # #briefs is emptied on every 60s render. A <details> nested inside it
+        # would be destroyed and snap shut; it has to be a sibling, with only
+        # its inner list rebuilt.
+        host = self.html.index('<div class="briefs" id="briefs"></div>')
+        details = self.html.index('id="past-briefs"')
+        self.assertLess(host, details, "the disclosure must not precede/nest in #briefs")
+        self.assertIn('id="past-list"', self.html[details:])
+        self.assertIn('renderBriefDays(document.getElementById("past-list")', self.html)
+
+    def test_the_tab_badge_counts_only_what_is_still_open(self):
+        self.assertIn('if (open.length) button.appendChild(el("span", "n", String(open.length)))',
+                      self.html)
+
+    def test_a_delivered_day_is_not_called_overdue(self):
+        # The deadline has passed but nothing is owed, so the past section
+        # must not borrow the overdue wording or colour.
+        self.assertIn('var owed = grouping.mode === "deadline" && !isPast;', self.html)
+        self.assertIn('renderBriefDays(document.getElementById("past-list"), past, now, true)',
+                      self.html)

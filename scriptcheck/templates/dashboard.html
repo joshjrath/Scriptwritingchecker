@@ -1179,6 +1179,7 @@
       animation: none !important;
     }
     .card.pulsing:not(.gentle)::after { content: none; }
+    .past-briefs .chev { transition: none; }
     .tile .n { transition: none; }
   }
   /* ---------- tabs ---------- */
@@ -1276,6 +1277,56 @@
   .brief-day.past .brief-day-head h2 { color: var(--muted); }
   /* A day whose deadline has gone is not merely old, it is owed. */
   .brief-day.overdue .brief-day-head h2 { color: var(--critical); }
+
+  /* Delivered briefs are reference, not work. A native <details> keeps the
+     disclosure keyboard-operable and needs no script to open. */
+  .past-briefs { margin-top: 30px; }
+  .past-briefs > summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 12px 16px;
+    border: 1px dashed var(--stroke-2);
+    border-radius: 12px;
+    list-style: none;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .past-briefs > summary::-webkit-details-marker { display: none; }
+  .past-briefs > summary::marker { content: ""; }
+  .past-briefs > summary:hover { color: var(--ink); border-color: var(--stroke-2); background: var(--panel-2); }
+  .past-briefs > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .past-briefs .chev {
+    width: 7px; height: 7px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg);
+    transition: transform .18s ease;
+    flex: none;
+    margin-left: 2px;
+  }
+  .past-briefs[open] .chev { transform: rotate(-135deg); }
+  .past-briefs .past-n {
+    margin-left: auto;
+    color: var(--muted);
+    letter-spacing: .04em;
+    text-transform: none;
+  }
+  .past-briefs .briefs { margin-top: 22px; }
+  .past-briefs[open] > summary { border-style: solid; background: var(--panel-2); }
+
+  .briefs-empty {
+    padding: 26px 20px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13.5px;
+    border: 1px dashed var(--stroke);
+    border-radius: 14px;
+  }
   .brief-day.overdue .brief-day-head .rel { color: var(--critical); }
   .brief { padding: 0; overflow: hidden; }
   .brief-head {
@@ -1451,6 +1502,15 @@
       </select>
     </div>
     <div class="briefs" id="briefs"></div>
+
+    <details class="past-briefs" id="past-briefs" hidden>
+      <summary>
+        <span class="chev" aria-hidden="true"></span>
+        Past briefs
+        <span class="past-n" id="past-count"></span>
+      </summary>
+      <div class="briefs" id="past-list"></div>
+    </details>
   </div>
 
   <footer id="foot"></footer>
@@ -2627,6 +2687,10 @@
     });
   }
 
+  function isDelivered(item) {
+    return item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE";
+  }
+
   function briefPanel(item) {
     var panel = el("article", "brief glass");
 
@@ -2703,7 +2767,7 @@
     return { buckets: order, spec: spec, mode: mode };
   }
 
-  function briefDayHead(bucket, grouping, now) {
+  function briefDayHead(bucket, grouping, now, isPast) {
     var head = el("div", "brief-day-head");
     var slate = grouping.mode === "slate";
 
@@ -2712,11 +2776,11 @@
       : fmt(bucket.date.toISOString(), slate ? slateLongFmt : dayLongFmt)));
 
     var days = bucket.key ? dayDiff(bucket.key, now) : null;
-    // "3 days ago" is the right reading for a date that has passed; for a
-    // deadline that has passed the word is overdue.
-    var when = days !== null && days < 0 && grouping.mode === "deadline"
-      ? "overdue"
-      : slateWhen(days);
+    /* A passed deadline is only overdue while something is still owed. In the
+       past section the work is delivered, so the same date is simply old -
+       calling it overdue there would be flatly wrong. */
+    var owed = grouping.mode === "deadline" && !isPast;
+    var when = days !== null && days < 0 && owed ? "overdue" : slateWhen(days);
     if (when) head.appendChild(el("span", "rel", when));
 
     head.appendChild(el("span", "rule"));
@@ -2724,7 +2788,7 @@
       bucket.items.length + (bucket.items.length === 1 ? " brief" : " briefs")));
 
     var tone = days === null ? ""
-      : days < 0 ? (grouping.mode === "deadline" ? " overdue" : " past")
+      : days < 0 ? (owed ? " overdue" : " past")
       : days <= 2 ? " soon" : "";
     return { node: head, tone: tone };
   }
@@ -2740,17 +2804,41 @@
     if (!items.length) {
       if (state.tab === "briefs") setTab("board");
       host.textContent = "";
+      document.getElementById("past-briefs").hidden = true;
       return;
     }
 
+    var now = new Date();
+    var open = items.filter(function (i) { return !isDelivered(i); });
+    var past = items.filter(isDelivered);
+
+    // The badge counts what is still owed; delivered briefs are tucked away
+    // and should not inflate it.
     button.textContent = "Briefs";
-    button.appendChild(el("span", "n", String(items.length)));
+    if (open.length) button.appendChild(el("span", "n", String(open.length)));
 
     host.textContent = "";
-    var now = new Date();
+    if (open.length) {
+      renderBriefDays(host, open, now);
+    } else {
+      host.appendChild(el("div", "briefs-empty",
+        past.length ? "Nothing open - every brief here is delivered."
+                    : "No briefs yet."));
+    }
+
+    var details = document.getElementById("past-briefs");
+    details.hidden = !past.length;
+    if (past.length) {
+      document.getElementById("past-count").textContent = past.length + " delivered";
+      renderBriefDays(document.getElementById("past-list"), past, now, true);
+    }
+  }
+
+  function renderBriefDays(host, items, now, isPast) {
+    host.textContent = "";
     var grouping = groupBriefs(items);
     grouping.buckets.forEach(function (bucket) {
-      var head = briefDayHead(bucket, grouping, now);
+      var head = briefDayHead(bucket, grouping, now, isPast);
       var day = el("div", "brief-day" + head.tone);
       day.appendChild(head.node);
       bucket.items.forEach(function (item) { day.appendChild(briefPanel(item)); });
