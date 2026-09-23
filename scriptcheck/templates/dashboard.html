@@ -1180,6 +1180,7 @@
     }
     .card.pulsing:not(.gentle)::after { content: none; }
     .past-briefs .chev { transition: none; }
+    .brief-copy { transition: none; }
     .tile .n { transition: none; }
   }
   /* ---------- tabs ---------- */
@@ -1353,6 +1354,50 @@
   /* Verbatim, because the whole point is to see what the parser saw - so it
      wraps rather than truncating, and long briefs scroll inside the panel
      instead of pushing the next one off the screen. */
+  .brief-copy {
+    appearance: none;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px; height: 30px;
+    padding: 0;
+    border-radius: 8px;
+    background: var(--panel-3);
+    border: 1px solid var(--stroke);
+    color: var(--muted);
+    cursor: pointer;
+    transition: color .14s ease, border-color .14s ease;
+  }
+  .brief-copy:hover { color: var(--ink); border-color: var(--stroke-2); }
+  .brief-copy svg {
+    width: 15px; height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .brief-copy.done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
+  .brief-copy.failed { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 55%, transparent); }
+
+  /* A 30px square is fine for a mouse and small for a thumb. */
+  @media (pointer: coarse) {
+    .brief-copy { width: 38px; height: 38px; }
+  }
+
+  /* Announced to a screen reader, since the only visible feedback is a
+     colour and a glyph swap. */
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   .brief-body {
     margin: 0;
     padding: 15px 18px;
@@ -1515,6 +1560,8 @@
 
   <footer id="foot"></footer>
 </main>
+
+<span class="sr-only" id="live-note" role="status" aria-live="polite"></span>
 
 <script id="report-data" type="application/json">__REPORT_DATA__</script>
 <script>
@@ -2670,10 +2717,16 @@
       banner.hidden = false;
     }
 
-    document.getElementById("foot").innerHTML =
-      "Built from the Discord threads by <code>scriptcheck</code>. " +
-      "A submission counts only when a Drive link is posted in the thread by you. " +
-      "Statuses recompute in the browser, so the countdowns stay right between refreshes.";
+    // Nodes rather than markup, so the page has no innerHTML assignment at
+    // all - it renders brief text it did not write, and that is the rule
+    // that keeps it safe.
+    var foot = document.getElementById("foot");
+    foot.textContent = "";
+    foot.appendChild(document.createTextNode("Built from the Discord threads by "));
+    foot.appendChild(el("code", null, "scriptcheck"));
+    foot.appendChild(document.createTextNode(
+      ". A submission counts only when a Drive link is posted in the thread by you. " +
+      "Statuses recompute in the browser, so the countdowns stay right between refreshes."));
   }
 
   /* Duplicates are deliberately kept here: comparing two forwards of the same
@@ -2685,6 +2738,96 @@
       return (b.assigned_at ? +new Date(b.assigned_at) : 0) -
              (a.assigned_at ? +new Date(a.assigned_at) : 0);
     });
+  }
+
+  var SVG_NS = "http://www.w3.org/2000/svg";
+
+  /* Built as nodes rather than markup: nothing on this page uses innerHTML,
+     and it renders brief text this board did not write. */
+  var ICONS = {
+    copy: [
+      ["rect", { x: "9", y: "9", width: "11", height: "11", rx: "2.4" }],
+      ["path", { d: "M5 15.5V6A1.5 1.5 0 0 1 6.5 4.5H15" }]
+    ],
+    check: [["path", { d: "M5 12.6l4.6 4.6L19 7.4" }]],
+    cross: [["path", { d: "M7 7l10 10M17 7L7 17" }]]
+  };
+
+  function svgIcon(name) {
+    var svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    ICONS[name].forEach(function (spec) {
+      var node = document.createElementNS(SVG_NS, spec[0]);
+      Object.keys(spec[1]).forEach(function (key) {
+        node.setAttribute(key, spec[1][key]);
+      });
+      svg.appendChild(node);
+    });
+    return svg;
+  }
+
+  function announce(message) {
+    var note = document.getElementById("live-note");
+    if (note) note.textContent = message;
+  }
+
+  /* navigator.clipboard exists only in a secure context, so a board served
+     over plain http - or an older mobile browser - falls back to the
+     selection trick. */
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.top = "-1000px";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      area.setSelectionRange(0, text.length);   // iOS needs the explicit range
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (err) { ok = false; }
+      document.body.removeChild(area);
+      if (ok) resolve(); else reject(new Error("copy blocked"));
+    });
+  }
+
+  function copyButton(item) {
+    var button = el("button", "brief-copy");
+    button.type = "button";
+    button.title = "Copy brief";
+    button.setAttribute("aria-label", "Copy brief");
+    button.appendChild(svgIcon("copy"));
+
+    var timer = null;
+    function flash(cls, icon, message) {
+      button.className = "brief-copy " + cls;
+      button.textContent = "";
+      button.appendChild(svgIcon(icon));
+      button.title = message;
+      announce(message);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        if (!button.isConnected) return;      // a re-render replaced it
+        button.className = "brief-copy";
+        button.textContent = "";
+        button.appendChild(svgIcon("copy"));
+        button.title = "Copy brief";
+      }, 1600);
+    }
+
+    button.addEventListener("click", function () {
+      copyText(item.brief_text).then(
+        function () { flash("done", "check", "Brief copied"); },
+        function () { flash("failed", "cross", "Could not copy - select the text instead"); }
+      );
+    });
+    return button;
   }
 
   function isDelivered(item) {
@@ -2702,6 +2845,7 @@
     var pill = el("span", "pill", META[item.live].label);
     pill.style.setProperty("--tone", META[item.live].tone);
     head.appendChild(pill);
+    head.appendChild(copyButton(item));
     panel.appendChild(head);
 
     // textContent, so a brief containing markup is shown, never run.

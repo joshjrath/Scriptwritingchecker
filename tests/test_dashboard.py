@@ -420,3 +420,49 @@ class TestPastBriefs(unittest.TestCase):
         self.assertIn('var owed = grouping.mode === "deadline" && !isPast;', self.html)
         self.assertIn('renderBriefDays(document.getElementById("past-list"), past, now, true)',
                       self.html)
+
+
+class TestBriefCopy(unittest.TestCase):
+    """One click puts the whole forwarded brief on the clipboard."""
+
+    @classmethod
+    def setUpClass(cls):
+        items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.html = render_dashboard(items, CONFIG, now=NOW, can_edit=True)
+
+    def test_it_copies_the_whole_brief(self):
+        self.assertIn("copyText(item.brief_text)", self.html)
+
+    def test_the_control_is_an_icon_but_still_labelled(self):
+        block = self.html.split("function copyButton", 1)[1].split("\n  }", 1)[0]
+        self.assertIn('setAttribute("aria-label", "Copy brief")', block)
+        self.assertIn('svgIcon("copy")', block)
+        # no visible word on the button
+        self.assertNotIn('el("button", "brief-copy", ', self.html)
+
+    def test_there_is_a_fallback_outside_a_secure_context(self):
+        # navigator.clipboard is undefined on plain http and in older mobile
+        # browsers, where the button would otherwise do nothing at all.
+        self.assertIn("navigator.clipboard && navigator.clipboard.writeText", self.html)
+        self.assertIn('document.execCommand("copy")', self.html)
+        # and the scratch textarea is always removed, success or not
+        block = self.html.split("function copyText", 1)[1].split("\n  }", 1)[0]
+        self.assertEqual(block.count("document.body.removeChild(area)"), 1)
+        self.assertLess(block.index("document.body.removeChild(area)"),
+                        block.index("if (ok) resolve()"))
+
+    def test_the_outcome_is_announced_not_only_coloured(self):
+        self.assertIn('id="live-note"', self.html)
+        self.assertIn('aria-live="polite"', self.html)
+        self.assertIn("announce(message)", self.html)
+
+    def test_the_page_never_assigns_innerhtml(self):
+        # This page renders brief text it did not write. Building every node
+        # through textContent/createElement is what keeps that safe, so the
+        # icons are built as SVG nodes rather than markup strings.
+        for pattern in (r"\.innerHTML\s*=", r"\.outerHTML\s*=", r"insertAdjacentHTML"):
+            self.assertIsNone(
+                re.search(pattern, self.html),
+                "%s writes markup from a string; build nodes instead" % pattern,
+            )
+        self.assertIn("createElementNS", self.html)
