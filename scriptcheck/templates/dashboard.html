@@ -1413,13 +1413,18 @@
   .brief-foot {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 14px;
-    padding: 10px 18px 13px;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 10px 18px 12px;
     border-top: 1px solid var(--stroke);
     font-family: var(--font-mono);
     font-size: 10.5px;
     color: var(--muted);
   }
+  /* The action sits opposite the parse notes, matching where the cards put
+     it - at the bottom of the panel, not competing with the title. */
+  .brief-action { margin-left: auto; }
+  .brief-action .markerr { margin-top: 4px; }
   .brief-foot b { color: var(--ink-2); font-weight: 500; }
 </style>
 
@@ -2864,6 +2869,16 @@
     // extraction, so it is worth putting next to the text it came from.
     note("read deadline as", item.deadline_raw || "(nothing found)");
     note("read words as", item.word_count ? item.word_count.toLocaleString() : "(nothing found)");
+
+    /* Duplicates are shown here so two forwards can be compared, but the copy
+       is not the thread being tracked - marking it delivered would record an
+       override against the wrong one. */
+    var mark = item.live === "DUPLICATE" ? null : markButton(item);
+    if (mark) {
+      var action = el("span", "brief-action");
+      action.appendChild(mark);
+      foot.appendChild(action);
+    }
     if (foot.childNodes.length) panel.appendChild(foot);
 
     return panel;

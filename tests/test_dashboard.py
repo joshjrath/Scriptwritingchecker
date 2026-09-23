@@ -466,3 +466,37 @@ class TestBriefCopy(unittest.TestCase):
                 "%s writes markup from a string; build nodes instead" % pattern,
             )
         self.assertIn("createElementNS", self.html)
+
+
+class TestBriefMarkDelivered(unittest.TestCase):
+    """The brief panel can record a delivery, like the cards and the table."""
+
+    @classmethod
+    def setUpClass(cls):
+        items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.html = render_dashboard(items, CONFIG, now=NOW, can_edit=True, live=True)
+
+    def test_the_brief_panel_offers_it(self):
+        block = self.html.split("function briefPanel", 1)[1].split("\n  }", 1)[0]
+        self.assertIn("markButton(item)", block)
+        self.assertIn('el("span", "brief-action")', block)
+
+    def test_it_reuses_the_one_control_rather_than_a_second_path(self):
+        # One implementation means one set of guards: static export,
+        # read-only viewer, and an already auto-detected delivery.
+        self.assertEqual(self.html.count("function markButton"), 1)
+
+    def test_a_duplicate_brief_cannot_be_marked(self):
+        # Duplicates appear here so two forwards can be compared, but the copy
+        # is not the tracked thread - marking it would write the override
+        # against the wrong one. The table never had this problem because it
+        # hides duplicates entirely.
+        block = self.html.split("function briefPanel", 1)[1].split("\n  }", 1)[0]
+        self.assertIn('item.live === "DUPLICATE" ? null : markButton(item)', block)
+
+    def test_a_read_only_viewer_gets_no_button(self):
+        viewer = render_dashboard(
+            build_assignments(load_threads(FIXTURE), CONFIG, now=NOW),
+            CONFIG, now=NOW, can_edit=False, live=True,
+        )
+        self.assertIn("if (DATA.can_edit === false) return null;", viewer)
