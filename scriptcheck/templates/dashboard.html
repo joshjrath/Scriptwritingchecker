@@ -928,6 +928,11 @@
   tbody tr:last-child td { border-bottom: 0; }
   tbody tr:hover { background: var(--panel-2); }
   .t-name { font-weight: 500; line-height: 1.35; }
+  /* Title and its brief button share a row, so the icon pins to the first
+     line instead of wrapping onto one of its own under a short title. */
+  .t-title-row { display: flex; align-items: flex-start; gap: 7px; }
+  .t-title-row > span:first-child { flex: 1 1 auto; min-width: 0; }
+  .t-title-row .briefjump { margin-left: 0; margin-top: 1px; }
   .t-name a { color: inherit; text-decoration: none; }
   .t-name a:hover { text-decoration: underline; text-underline-offset: 3px; }
   .t-sub { display: block; font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); margin-top: 4px; letter-spacing: .03em; }
@@ -1023,6 +1028,7 @@
     }
     tbody td > * { text-align: right; }
     .t-name { text-align: right; }
+    .t-title-row { justify-content: flex-end; }
     .track { height: 118px; }
   }
 
@@ -1180,7 +1186,8 @@
     }
     .card.pulsing:not(.gentle)::after { content: none; }
     .past-briefs .chev { transition: none; }
-    .brief-copy { transition: none; }
+    .brief-copy, .briefjump { transition: none; }
+    .brief.flash { animation: none; }
     .tile .n { transition: none; }
   }
   /* ---------- tabs ---------- */
@@ -1354,6 +1361,44 @@
   /* Verbatim, because the whole point is to see what the parser saw - so it
      wraps rather than truncating, and long briefs scroll inside the panel
      instead of pushing the next one off the screen. */
+  /* Sits next to a script wherever it is listed, so the brief is one hop
+     away from the row rather than a tab away and a scroll down. */
+  .briefjump {
+    appearance: none;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    width: 24px; height: 24px;
+    margin-left: 7px;
+    padding: 0;
+    border-radius: 7px;
+    background: var(--panel-3);
+    border: 1px solid var(--stroke);
+    color: var(--muted);
+    cursor: pointer;
+    transition: color .14s ease, border-color .14s ease;
+  }
+  .briefjump:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+  .briefjump svg {
+    width: 13px; height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  @media (pointer: coarse) { .briefjump { width: 32px; height: 32px; } }
+
+  /* The sticky header would otherwise sit on top of the panel scrolled to. */
+  .brief { scroll-margin-top: 82px; }
+  @keyframes brief-flash {
+    from { box-shadow: var(--shade), 0 0 0 2px var(--accent); }
+    to   { box-shadow: var(--shade), 0 0 0 2px transparent; }
+  }
+  .brief.flash { animation: brief-flash 1.7s ease-out; }
+
   .brief-copy {
     appearance: none;
     flex: none;
@@ -2015,6 +2060,8 @@
     if (heroItem.slot) meta.appendChild(el("span", "slate", heroItem.slot));
     var heroPost = postChip(heroItem, now);
     if (heroPost) meta.appendChild(heroPost);
+    var heroJump = briefLink(heroItem);
+    if (heroJump) meta.appendChild(heroJump);
     if (heroItem.word_count) meta.appendChild(el("span", null, heroItem.word_count.toLocaleString() + " words"));
     meta.appendChild(el("span", null, "due " + fmt(heroItem.deadline)));
     left.appendChild(meta);
@@ -2395,6 +2442,8 @@
       head.appendChild(pill);
       var flag = reviewBadge(item);
       if (flag) head.appendChild(flag);
+      var cardJump = briefLink(item);
+      if (cardJump) head.appendChild(cardJump);
       top.appendChild(head);
 
       var c = countdown(item, now);
@@ -2489,8 +2538,12 @@
       if (flag) status.appendChild(flag);
       cell(tr, "Status", status);
 
-      var name = linkedTitle(item, "div");
-      name.className = "t-name";
+      var name = el("div", "t-name");
+      var titleRow = el("div", "t-title-row");
+      titleRow.appendChild(linkedTitle(item, "span"));
+      var jump = briefLink(item);
+      if (jump) titleRow.appendChild(jump);
+      name.appendChild(titleRow);
       var subBits = [item.slot, item.channel ? "#" + item.channel : ""].filter(Boolean);
       var sub = el("span", "t-sub");
       var badge = showBadge(item);
@@ -2734,11 +2787,12 @@
       "Statuses recompute in the browser, so the countdowns stay right between refreshes."));
   }
 
-  /* Duplicates are deliberately kept here: comparing two forwards of the same
-     brief is one of the main reasons to read the raw text. */
+  /* Same exclusions as the board: a duplicate is a second copy of a brief
+     that is already listed, so showing it here only doubles the reading. The
+     bell still flags that a re-forward happened. */
   function briefItems() {
     return ITEMS.filter(function (i) {
-      return i.brief_text && i.live !== "NOT_MINE" && i.live !== "IGNORED";
+      return i.brief_text && HIDDEN.indexOf(i.live) === -1;
     }).sort(function (a, b) {
       return (b.assigned_at ? +new Date(b.assigned_at) : 0) -
              (a.assigned_at ? +new Date(a.assigned_at) : 0);
@@ -2755,7 +2809,11 @@
       ["path", { d: "M5 15.5V6A1.5 1.5 0 0 1 6.5 4.5H15" }]
     ],
     check: [["path", { d: "M5 12.6l4.6 4.6L19 7.4" }]],
-    cross: [["path", { d: "M7 7l10 10M17 7L7 17" }]]
+    cross: [["path", { d: "M7 7l10 10M17 7L7 17" }]],
+    brief: [
+      ["rect", { x: "5", y: "3.5", width: "14", height: "17", rx: "2.4" }],
+      ["path", { d: "M8.6 8.5h6.8M8.6 12h6.8M8.6 15.5h4" }]
+    ]
   };
 
   function svgIcon(name) {
@@ -2835,12 +2893,45 @@
     return button;
   }
 
+  /* Jump from a script to the brief it came from. */
+  function openBrief(threadId) {
+    setTab("briefs");
+    var panel = document.getElementById("brief-" + threadId);
+    if (!panel) return;
+    // A delivered brief lives inside the collapsed disclosure.
+    var details = panel.closest ? panel.closest("details") : null;
+    if (details) details.open = true;
+    // The tab was hidden a moment ago; let it lay out before scrolling.
+    requestAnimationFrame(function () {
+      panel.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" });
+      panel.classList.add("flash");
+      setTimeout(function () { panel.classList.remove("flash"); }, 1700);
+    });
+  }
+
+  function briefLink(item) {
+    // No text means a read-only viewer, who has no briefs tab to jump to.
+    if (!item.brief_text) return null;
+    var button = el("button", "briefjump");
+    button.type = "button";
+    button.title = "Open the brief";
+    button.setAttribute("aria-label", "Open the brief for " + titleOf(item));
+    button.appendChild(svgIcon("brief"));
+    button.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openBrief(item.thread_id);
+    });
+    return button;
+  }
+
   function isDelivered(item) {
     return item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE";
   }
 
   function briefPanel(item) {
     var panel = el("article", "brief glass");
+    panel.id = "brief-" + item.thread_id;
 
     var head = el("div", "brief-head");
     var badge = showBadge(item);
@@ -2870,10 +2961,7 @@
     note("read deadline as", item.deadline_raw || "(nothing found)");
     note("read words as", item.word_count ? item.word_count.toLocaleString() : "(nothing found)");
 
-    /* Duplicates are shown here so two forwards can be compared, but the copy
-       is not the thread being tracked - marking it delivered would record an
-       override against the wrong one. */
-    var mark = item.live === "DUPLICATE" ? null : markButton(item);
+    var mark = markButton(item);
     if (mark) {
       var action = el("span", "brief-action");
       action.appendChild(mark);

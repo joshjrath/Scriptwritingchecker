@@ -486,13 +486,15 @@ class TestBriefMarkDelivered(unittest.TestCase):
         # read-only viewer, and an already auto-detected delivery.
         self.assertEqual(self.html.count("function markButton"), 1)
 
-    def test_a_duplicate_brief_cannot_be_marked(self):
-        # Duplicates appear here so two forwards can be compared, but the copy
-        # is not the tracked thread - marking it would write the override
-        # against the wrong one. The table never had this problem because it
-        # hides duplicates entirely.
-        block = self.html.split("function briefPanel", 1)[1].split("\n  }", 1)[0]
-        self.assertIn('item.live === "DUPLICATE" ? null : markButton(item)', block)
+    def test_a_duplicate_brief_is_not_listed_at_all(self):
+        # A duplicate is a second copy of a brief already on the list, so it
+        # is excluded at the source rather than special-cased per control.
+        # The bell still flags that a re-forward happened.
+        block = self.html.split("function briefItems", 1)[1].split("\n  }", 1)[0]
+        self.assertIn("HIDDEN.indexOf(i.live) === -1", block)
+        self.assertIn('var HIDDEN = ["NOT_MINE", "IGNORED", "DUPLICATE"];', self.html)
+        # and no per-control guard is left behind pretending the case exists
+        self.assertNotIn('item.live === "DUPLICATE" ? null', self.html)
 
     def test_a_read_only_viewer_gets_no_button(self):
         viewer = render_dashboard(
@@ -500,3 +502,37 @@ class TestBriefMarkDelivered(unittest.TestCase):
             CONFIG, now=NOW, can_edit=False, live=True,
         )
         self.assertIn("if (DATA.can_edit === false) return null;", viewer)
+
+
+class TestJumpToBrief(unittest.TestCase):
+    """Every script on the board links across to the brief it came from."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.html = render_dashboard(cls.items, CONFIG, now=NOW, can_edit=True, live=True)
+
+    def test_the_button_is_offered_in_every_listing(self):
+        for where in ("var jump = briefLink(item);",
+                      "var cardJump = briefLink(item);",
+                      "var heroJump = briefLink(heroItem);"):
+            self.assertIn(where, self.html)
+
+    def test_the_panels_carry_an_id_to_land_on(self):
+        self.assertIn('panel.id = "brief-" + item.thread_id;', self.html)
+        self.assertIn('document.getElementById("brief-" + threadId)', self.html)
+
+    def test_it_opens_the_tab_before_scrolling(self):
+        block = self.html.split("function openBrief", 1)[1].split("\n  }", 1)[0]
+        self.assertLess(block.index('setTab("briefs")'), block.index("scrollIntoView"))
+        # a delivered brief sits inside the collapsed disclosure
+        self.assertIn('closest("details")', block)
+        self.assertIn("details.open = true", block)
+
+    def test_the_landing_clears_the_sticky_header(self):
+        # scrollIntoView would otherwise tuck the panel under the top bar.
+        self.assertIn(".brief { scroll-margin-top:", self.html)
+
+    def test_a_viewer_without_brief_text_gets_no_button(self):
+        block = self.html.split("function briefLink", 1)[1].split("\n  }", 1)[0]
+        self.assertIn("if (!item.brief_text) return null;", block)
