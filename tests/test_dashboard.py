@@ -404,7 +404,7 @@ class TestPastBriefs(unittest.TestCase):
         # #briefs is emptied on every 60s render. A <details> nested inside it
         # would be destroyed and snap shut; it has to be a sibling, with only
         # its inner list rebuilt.
-        host = self.html.index('<div class="briefs" id="briefs"></div>')
+        host = self.html.index('<div class="briefs" id="brief-list"></div>')
         details = self.html.index('id="past-briefs"')
         self.assertLess(host, details, "the disclosure must not precede/nest in #briefs")
         self.assertIn('id="past-list"', self.html[details:])
@@ -513,10 +513,16 @@ class TestJumpToBrief(unittest.TestCase):
         cls.html = render_dashboard(cls.items, CONFIG, now=NOW, can_edit=True, live=True)
 
     def test_the_button_is_offered_in_every_listing(self):
-        for where in ("var jump = briefLink(item);",
-                      "var cardJump = briefLink(item);",
-                      "var heroJump = briefLink(heroItem);"):
-            self.assertIn(where, self.html)
+        # The table builds its own title row; the cards and the hero both go
+        # through metaRow, so one call there covers them.
+        table = self.html.split("function renderTable", 1)[1].split("\n  }", 1)[0]
+        self.assertIn("briefLink(item)", table)
+        meta = self.html.split("function metaRow", 1)[1].split("\n  }", 1)[0]
+        self.assertIn("briefLink(item)", meta)
+
+    def test_a_brief_gets_no_button_back_to_itself(self):
+        panel = self.html.split("function briefPanel", 1)[1].split("\n  }", 1)[0]
+        self.assertNotIn("briefLink(", panel)
 
     def test_the_panels_carry_an_id_to_land_on(self):
         self.assertIn('panel.id = "brief-" + item.thread_id;', self.html)
@@ -536,3 +542,87 @@ class TestJumpToBrief(unittest.TestCase):
     def test_a_viewer_without_brief_text_gets_no_button(self):
         block = self.html.split("function briefLink", 1)[1].split("\n  }", 1)[0]
         self.assertIn("if (!item.brief_text) return null;", block)
+
+
+class TestLayout(unittest.TestCase):
+    """What each part of the board is for decides where it sits."""
+
+    @classmethod
+    def setUpClass(cls):
+        items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.html = render_dashboard(items, CONFIG, now=NOW, can_edit=True, live=True)
+
+    def test_the_counts_share_the_hero_panel(self):
+        # The headline script and the tally it belongs to are one glance; the
+        # tiles used to sit below the chart as three near-empty panels.
+        self.assertRegex(
+            self.html,
+            r'<div class="summary glass">\s*<section class="hero" id="hero"[^>]*></section>'
+            r'\s*<div class="tiles" id="tiles"',
+        )
+        self.assertLess(self.html.index('id="tiles"'), self.html.index('class="runway'))
+
+    def test_a_tile_takes_you_to_the_table_it_filters(self):
+        # The table is far below the tiles, so filtering it without moving
+        # there looked like the click did nothing.
+        block = self.html.split("function renderTiles", 1)[1].split("\n  }", 1)[0]
+        self.assertIn("if (state.filter) revealTable();", block)
+        self.assertIn('<section id="everything">', self.html)
+        # and it lands clear of the sticky header
+        self.assertIn("#everything { scroll-margin-top:", self.html)
+
+    def test_the_deadline_and_its_countdown_share_a_column(self):
+        # A separate Time column pushed the owner's table past its panel.
+        self.assertNotIn(">Time</th>", self.html)
+        self.assertIn('"t-due"', self.html)
+
+    def test_a_mark_button_stands_in_for_not_yet(self):
+        # Both stacked in one cell is what overflowed the table.
+        block = self.html.split("function renderTable", 1)[1].split("\n  }", 1)[0]
+        guard = block.index("} else if (!rowMark) {")
+        placeholder = block.index('el("span", "dash", "not yet")')
+        self.assertLess(guard, placeholder)
+        self.assertLess(placeholder, block.index('cell(tr, "Delivered"'))
+
+    def test_the_channel_is_named_only_when_there_are_two(self):
+        # One channel is the same words on every line; the name only tells
+        # rows apart once there is a second.
+        self.assertIn("mixedChannels = channelsVary();", self.html)
+        uses = [m.start() for m in re.finditer(r'"#" \+ item\.channel', self.html)]
+        self.assertTrue(uses, "channel is never shown at all")
+        for at in uses:
+            # the guard is on the same line or the one above
+            self.assertIn("mixedChannels && item.channel", self.html[at - 160:at])
+
+    def test_a_chip_counts_exactly_what_it_filters(self):
+        self.assertIn("return !state.filter || inBucket(item, state.filter);", self.html)
+        block = self.html.split("function renderChips", 1)[1].split("\n  }", 1)[0]
+        self.assertIn("inBucket(i, key)", block)
+
+
+class TestAccessibility(unittest.TestCase):
+    """Controls have names, and nothing that is not a control takes focus."""
+
+    @classmethod
+    def setUpClass(cls):
+        items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.html = render_dashboard(items, CONFIG, now=NOW, can_edit=True)
+
+    def test_only_a_day_with_work_is_a_chart_control(self):
+        # Every day used to be a nameless <button>: a tab stop per empty day,
+        # announced as just "button".
+        block = self.html.split("function renderRunway", 1)[1].split("\n  }", 1)[0]
+        self.assertIn('el(busy ? "button" : "div"', block)
+        self.assertIn('col.setAttribute("aria-label"', block)
+        self.assertIn('col.setAttribute("aria-hidden", "true")', block)
+
+    def test_the_briefs_deep_link_has_nothing_to_scroll_to(self):
+        # An element whose id matched #briefs was scrolled up under the sticky
+        # header when the board was opened on that tab.
+        self.assertNotIn('id="briefs"', self.html)
+        self.assertIn('"#briefs"', self.html)
+
+    def test_a_lone_tab_is_not_offered(self):
+        # Without the Briefs tab, a strip holding only Board switches nothing.
+        block = self.html.split("function renderBriefs", 1)[1].split("\n  }", 1)[0]
+        self.assertIn('document.getElementById("tabs").hidden = !items.length;', block)

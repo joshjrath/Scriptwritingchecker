@@ -4,8 +4,6 @@
 <style>
   /* Light palette on bare :root; the dark treatment is the design's home and
      is redefined for both the system setting and an explicit toggle. */
-  /* Light palette on bare :root; the dark treatment is the design's home and
-     is redefined for both the system setting and an explicit toggle. */
   :root {
     --bg-0: #eef0f6;
     --bg-1: #e4e7f0;
@@ -200,32 +198,21 @@
     padding-block: 12px;
   }
   .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-  /* The logo keeps its own purple in either theme - a mark that restates the
-     page's accent variable is a swatch, not a brand. */
-  /* A supplied logo replaces the drawn mark entirely - no border, no stripes,
-     no background tinting whatever it is. */
-  img.mark {
-    background: none;
-    border: 0;
-    box-shadow: none;
-    border-radius: 7px;
-  }
+  /* The mark carries its own tile, corners and edge - the drawn one in its
+     SVG, a supplied one in the file itself. So this box stays undecorated:
+     a background or border here is a second, slightly different tile showing
+     past the artwork's rounded corners, which is what made the edge look
+     chipped. The logo also keeps its own purple in either theme; a mark that
+     restates the page's accent variable is a swatch, not a brand. */
   .mark {
     flex: none;
     display: block;
     width: 32px; height: 32px;
-    border-radius: 8px;
     object-fit: contain;
-    background:
-      repeating-linear-gradient(118deg,
-        color-mix(in srgb, var(--accent) 85%, transparent) 0 7px,
-        transparent 7px 14px),
-      linear-gradient(150deg,
-        color-mix(in srgb, var(--accent) 30%, transparent),
-        transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-    box-shadow: inset 0 1px 0 var(--gloss);
   }
+  /* 15/64 of the drawn mark's viewBox, so a supplied square image lands on
+     the same corner radius instead of near it. */
+  img.mark { border-radius: 7.5px; }
   h1 {
     font-family: var(--font-display);
     font-size: 18px;
@@ -233,12 +220,25 @@
     letter-spacing: .01em;
     margin: 0;
   }
+  .brand > div { min-width: 0; }
+  /* One line at any width: on a phone it was breaking between the role and
+     the timezone, which read as two unrelated captions. */
   .sub {
+    display: flex;
+    align-items: center;
+    gap: 3px;
     margin: 1px 0 0;
     font-family: var(--font-mono);
     font-size: 11px;
     letter-spacing: .04em;
     color: var(--muted);
+    white-space: nowrap;
+  }
+  /* The zone is the part worth keeping when there is room for only one;
+     alone on the line, its text lines up under the title's. */
+  @media (max-width: 480px) {
+    #sub-roles { display: none; }
+    .tzpick { margin-left: -4px; }
   }
   /* Styled as part of the subline rather than as a form control, since that is
      where the timezone was already being named. */
@@ -255,6 +255,9 @@
     border-radius: 5px;
     padding: 1px 15px 1px 4px;
     margin-left: 2px;
+    min-width: 0;
+    max-width: 100%;
+    text-overflow: ellipsis;
     cursor: pointer;
     background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
                       linear-gradient(135deg, currentColor 50%, transparent 50%);
@@ -329,8 +332,14 @@
     margin: 0 0 10px;
   }
 
+  /* ---------- summary: the next deadline, then the counts ---------- */
+  /* One panel rather than four. The script that matters most and the tally
+     it belongs to are the same glance, so they share an edge instead of
+     being separated by the chart. */
+  .summary { position: relative; overflow: hidden; }
+
   /* ---------- hero ---------- */
-  .hero { padding: 22px 24px; position: relative; overflow: hidden; }
+  .hero { padding: 22px 24px 20px; position: relative; }
   .hero::after {
     content: "";
     position: absolute;
@@ -360,8 +369,8 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 10px;
-    margin-top: 12px;
+    gap: 6px 8px;
+    margin-top: 13px;
     font-family: var(--font-mono);
     font-size: 11.5px;
     color: var(--muted);
@@ -421,7 +430,7 @@
     right: 0;
     transform: translateY(50%);
     font-family: var(--font-mono);
-    font-size: 9.5px;
+    font-size: 10px;
     color: var(--muted);
     white-space: nowrap;
   }
@@ -458,7 +467,20 @@
     cursor: default;
   }
   .col.has-work { cursor: pointer; }
+  /* A faint wash behind today's column anchors the axis on now, so the eye
+     reads left of it as late and right of it as runway. */
+  .col.today::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 6px 6px 0 0;
+    background: linear-gradient(to top,
+      color-mix(in srgb, var(--accent) 14%, transparent),
+      transparent 90%);
+    pointer-events: none;
+  }
   .stack {
+    position: relative;
     width: 100%;
     max-width: 22px;          /* bars stay thin; the band keeps its air */
     display: flex;
@@ -479,29 +501,35 @@
     position: absolute;
     bottom: calc(100% + 0px);
     font-family: var(--font-mono);
-    font-size: 9.5px;
+    font-size: 10.5px;
     color: var(--ink-2);
     white-space: nowrap;
   }
 
+  /* Weekday over date, calendar-style: "two scripts on Thursday" is how the
+     week is actually planned, and a bare 24 does not say Thursday. */
   .xrow {
     display: flex;
     gap: 2px;
-    margin-top: 7px;
+    margin-top: 8px;
   }
   .xlabel {
     flex: 1 1 0;
     min-width: 0;
-    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
     font-family: var(--font-mono);
-    font-size: 9.5px;
-    letter-spacing: .02em;
+    font-size: 10px;
+    line-height: 1.2;
     color: var(--muted);
     white-space: nowrap;
-    overflow: hidden;
   }
-  .xlabel.today { color: var(--accent); font-weight: 600; }
-  .xlabel.late { color: var(--critical); }
+  .xlabel .dd { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .xlabel.today .wd,
+  .xlabel.today .dd { color: var(--accent); font-weight: 600; }
+  .xlabel.late .wd { color: var(--critical); }
 
   .legend {
     display: flex;
@@ -563,63 +591,84 @@
   }
 
   /* ---------- tiles ---------- */
+  /* The counts run along the foot of the summary as one strip split by
+     hairlines: three single digits never needed three panels, and on a
+     phone the third one used to sit alone on its own row. Each still
+     filters the table - and now takes you to it, so the click shows. */
   .tiles {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--stroke);
+    background: color-mix(in srgb, var(--panel-2) 55%, transparent);
   }
-  @media (max-width: 430px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
   .tile {
     appearance: none;
     font: inherit;
+    color: inherit;
     text-align: left;
     cursor: pointer;
-    padding: 14px 15px 15px;
-    border-radius: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 13px 24px 14px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "n n" "dot k";
+    align-items: center;
+    gap: 4px 7px;
     position: relative;
-    overflow: hidden;
-    transition: transform .12s ease, border-color .12s ease;
+    transition: background-color .14s ease;
   }
+  .tile + .tile { border-left: 1px solid var(--stroke); }
+  /* The status light: it breathes while something in it is owed. */
   .tile::before {
     content: "";
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 2px;
+    grid-area: dot;
+    width: 7px; height: 7px;
+    border-radius: 50%;
     background: var(--tone, var(--muted));
-    opacity: .8;
   }
-  .tile:hover { transform: translateY(-2px); }
+  .tile:hover { background: var(--panel-2); }
   .tile[aria-pressed="true"] {
-    border-color: color-mix(in srgb, var(--tone, var(--accent)) 70%, transparent);
-    background: var(--panel-2);
-    box-shadow: var(--shade), 0 0 0 1px color-mix(in srgb, var(--tone, var(--accent)) 35%, transparent);
+    background: color-mix(in srgb, var(--tone, var(--accent)) 11%, transparent);
+    box-shadow: inset 0 -2px 0 var(--tone, var(--accent));
   }
+  /* The strip clips its children, so the ring goes inside the cell. */
+  .tile:focus-visible { outline-offset: -3px; }
   .tile .n {
+    grid-area: n;
     font-family: var(--font-display);
-    font-size: 27px;
+    font-size: 28px;
     font-weight: 700;
     line-height: 1.02;
     font-variant-numeric: tabular-nums;
     color: var(--tone, var(--ink));
   }
   .tile .k {
+    grid-area: k;
     font-family: var(--font-mono);
-    font-size: 9.5px;
+    font-size: 10.5px;
     letter-spacing: .12em;
     text-transform: uppercase;
     color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .tile.zero .n { color: var(--muted); opacity: .4; }
+  .tile.zero::before { opacity: .3; }
+  @media (max-width: 560px) {
+    .tile { padding: 11px 14px 12px; gap: 4px 6px; }
+    .tile .n { font-size: 24px; }
+    .tile .k { letter-spacing: .08em; }
+  }
 
   /* ---------- cards ---------- */
   .urgent { display: flex; flex-direction: column; gap: 11px; }
   .card {
     position: relative;
-    padding: 15px 18px 15px 21px;
+    padding: 16px 20px 16px 23px;
     overflow: hidden;
   }
   .card::before {
@@ -630,78 +679,106 @@
     background: var(--tone, var(--muted));
     box-shadow: 0 0 14px color-mix(in srgb, var(--tone, var(--accent)) 60%, transparent);
   }
-  .card-top {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
+  /* Title and countdown share the top line, so the list scans by time left;
+     the facts and the one action share the second. The status pill joins
+     the facts rather than taking a line of its own under the title. */
+  .card-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title clock"
+      "meta  act";
+    gap: 11px 24px;
+    align-items: start;
   }
   .card h3 {
+    grid-area: title;
     font-family: var(--font-body);
-    font-size: 16px;
+    font-size: 16.5px;
     font-weight: 600;
-    margin: 0 0 7px;
+    margin: 0;
     line-height: 1.35;
     text-wrap: balance;
   }
   .card h3 a { color: inherit; text-decoration: none; }
   .card h3 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .card .meta { grid-area: meta; }
+  .card-act { grid-area: act; justify-self: end; align-self: center; text-align: right; }
+  /* Time left is set in the display face, the same voice as the hero's
+     timecode, so every countdown on the page reads as one kind of thing. */
   .clock {
-    flex: none;
-    font-family: var(--font-mono);
-    font-size: 14px;
-    font-weight: 500;
+    grid-area: clock;
+    font-family: var(--font-display);
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -.005em;
     font-variant-numeric: tabular-nums;
     color: var(--tone, var(--ink));
     text-align: right;
+    white-space: nowrap;
   }
-  .clock small { display: block; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 400; margin-top: 2px; }
+  @media (max-width: 560px) {
+    .card { padding: 14px 16px 15px 19px; }
+    .card-grid {
+      grid-template-areas:
+        "title clock"
+        "meta  meta"
+        "act   act";
+      gap: 10px 14px;
+    }
+    .card-act { justify-self: start; text-align: left; }
+    .clock { font-size: 16px; }
+  }
   .meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 10px;
-    margin-top: 10px;
+    gap: 6px 8px;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 11.5px;
     color: var(--muted);
     align-items: center;
   }
-  .slate {
+  /* The deadline leads the facts - it is the one this board exists to watch -
+     and is the only part of the line set in the brighter ink. */
+  .facts { line-height: 1.5; }
+  .facts b { color: var(--ink-2); font-weight: 500; }
+
+  /* Video numbers restart per channel, so the show and the slot together are
+     what identifies a script - two different VIDEO-001s is the normal case,
+     not an edge case. They read as one identifier, in one chip: the show
+     first, in the accent, then the slot. */
+  .ident {
+    display: inline-flex;
+    align-items: stretch;
     font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: .08em;
+    font-size: 10.5px;
+    line-height: 1.55;
     border: 1px solid var(--stroke-2);
-    border-radius: 4px;
-    padding: 2px 7px;
+    border-radius: 5px;
+    overflow: hidden;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .ident > span { padding: 1px 7px; }
+  .ident .show {
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 13%, transparent);
+  }
+  .ident .slot {
     color: var(--ink-2);
     background: var(--panel-3);
+    letter-spacing: .06em;
   }
+  .ident .show + .slot { border-left: 1px solid var(--stroke-2); }
+
   /* The posting date is a different kind of fact from the deadline: one is
      when the video goes out, the other is when it is owed. They were running
      together in the same grey line, so the posting date gets its own chip and
      its own label, and never borrows the urgency colours. */
-  /* Video numbers restart per channel, so the show is the part that actually
-     identifies a script - two different VIDEO-001s is the normal case, not an
-     edge case. It reads before the slot everywhere it appears. */
-  .show {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-    color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
-    border-radius: 4px;
-    padding: 2px 7px;
-    white-space: nowrap;
-  }
-  .t-sub .show {
-    font-size: 9.5px;
-    padding: 1px 5px;
-    margin-right: 5px;
-  }
 
   .postdate {
     display: inline-flex;
@@ -718,7 +795,7 @@
     white-space: nowrap;
   }
   .postdate b {
-    font-size: 9px;
+    font-size: 9.5px;
     font-weight: 500;
     letter-spacing: .12em;
     color: var(--muted);
@@ -727,7 +804,11 @@
   .postdate.soon b { color: var(--accent); }
   .postdate.past { border-left-color: var(--stroke-2); opacity: .65; }
 
-  .t-post {
+  /* Both date columns read the same way: the date, then what it means from
+     here. The deadline's second line is the countdown, which used to be a
+     column of its own and pushed the table wider than its panel. */
+  .t-post,
+  .t-due {
     font-family: var(--font-mono);
     font-size: 12.5px;
     font-variant-numeric: tabular-nums;
@@ -736,17 +817,19 @@
   }
   .t-post.soon { color: var(--ink); font-weight: 500; }
   .t-post.past { color: var(--muted); }
-  .t-post span {
+  .t-post span,
+  .t-due span {
     display: block;
-    font-size: 10.5px;
+    font-size: 11px;
     color: var(--muted);
     letter-spacing: .03em;
     margin-top: 3px;
   }
   .t-post.soon span { color: var(--accent); }
+  .t-due span { font-weight: 500; }
 
   .warn {
-    margin: 10px 0 0;
+    margin: 12px 0 0;
     font-size: 13px;
     color: var(--ink-2);
     border-left: 2px solid color-mix(in srgb, var(--today) 65%, transparent);
@@ -907,13 +990,20 @@
     background: var(--accent);
     border-color: var(--accent);
   }
+  .chip:hover:not([aria-pressed="true"]) { color: var(--ink-2); border-color: var(--stroke-2); }
+  /* Each filter says how much is behind it before you press it. */
+  .chip .n { margin-left: 7px; opacity: .65; font-variant-numeric: tabular-nums; }
+  .chip[aria-pressed="true"] .n { opacity: .85; }
 
   /* ---------- table ---------- */
+  /* A tile scrolls here; the margin keeps the heading clear of the sticky
+     header when it lands. */
+  #everything { scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 80px); }
   .tablewrap { overflow-x: auto; border-radius: 14px; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   thead th {
     font-family: var(--font-mono);
-    font-size: 9.5px;
+    font-size: 10px;
     font-weight: 500;
     letter-spacing: .14em;
     text-transform: uppercase;
@@ -935,23 +1025,37 @@
   .t-title-row .briefjump { margin-left: 0; margin-top: 1px; }
   .t-name a { color: inherit; text-decoration: none; }
   .t-name a:hover { text-decoration: underline; text-underline-offset: 3px; }
-  .t-sub { display: block; font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); margin-top: 4px; letter-spacing: .03em; }
+  .t-sub {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 400;
+    color: var(--muted);
+    margin-top: 6px;
+    letter-spacing: .03em;
+  }
+  .t-sub .ident { font-size: 10px; }
+  .t-chan { margin-left: 8px; }
+  .t-status { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
-  /* In the real table the slot is the part worth reading, so a long channel
-     name truncates rather than wrapping the line in half. Below the table
-     breakpoint each row is a full-width card and wrapping is fine, so this
-     stays out of the way there. */
+  /* In the real table the identifier is the part worth reading, so a long
+     channel name truncates rather than wrapping the line in half. Below the
+     table breakpoint each row is a full-width card and wrapping is fine, so
+     this stays out of the way there. */
   @media (min-width: 731px) {
-    /* Keeps the seven columns inside the panel; the title wraps instead of
+    /* Keeps the columns inside the panel; the title wraps instead of
        pushing Delivered off the edge. */
-    .t-name { max-width: 240px; }
+    .t-name { max-width: 320px; }
     .t-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   }
   .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12.5px; }
+  /* "5,000" is enough under a Words header; a phone row has no header. */
+  .unit { display: none; }
+  .t-deliv { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
   .pill {
     display: inline-block;
     font-family: var(--font-mono);
-    font-size: 9.5px;
+    font-size: 10px;
     font-weight: 500;
     letter-spacing: .1em;
     text-transform: uppercase;
@@ -991,11 +1095,14 @@
     max-width: 320px;
     white-space: normal;
   }
-  .card .markbtn { margin-top: 10px; }
+  /* "Check" is a note about the parse, not a status, so it is drawn as one:
+     dashed and unfilled. Beside a No deadline pill it used to look like a
+     second status in the same blue. */
   .pill.flag {
     --tone: var(--unknown);
     letter-spacing: .12em;
-    margin-left: 6px;
+    border-style: dashed;
+    background: transparent;
     cursor: help;
   }
   .link { color: var(--accent); text-decoration: none; font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
@@ -1005,31 +1112,55 @@
   @media (max-width: 730px) {
     .hero-grid { grid-template-columns: minmax(0, 1fr); }
     .timecode, .timecode-label { text-align: left; }
+
+    /* Each row becomes a small card laid out on a grid - status and length
+       on top, the title, then the two dates side by side - rather than
+       seven label/value lines, which made every row a screen tall. */
     .tablewrap { overflow-x: visible; background: transparent; border: 0; box-shadow: none; }
-    table, tbody, tr, td { display: block; width: 100%; box-sizing: border-box; }
+    table, tbody, td { display: block; box-sizing: border-box; }
     thead { display: none; }
     tbody tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+      grid-template-areas:
+        "status words"
+        "name   name"
+        "due    post"
+        "deliv  deliv";
+      gap: 11px 14px;
+      padding: 14px 16px 15px;
       background: var(--panel);
       border: 1px solid var(--stroke);
       border-radius: 14px;
       box-shadow: var(--shade);
       margin-bottom: 10px;
-      padding: 5px 0;
     }
-    tbody td { border-bottom: 0; padding: 6px 15px; display: flex; gap: 14px; justify-content: space-between; align-items: baseline; }
-    tbody td::before {
+    tbody tr:hover { background: var(--panel); }
+    tbody tr.empty-row { display: block; }
+    tbody td { padding: 0; border-bottom: 0; min-width: 0; }
+    td.c-status { grid-area: status; }
+    td.c-words { grid-area: words; justify-self: end; align-self: center; color: var(--muted); }
+    td.c-name { grid-area: name; }
+    td.c-due { grid-area: due; }
+    td.c-post { grid-area: post; }
+    td.c-deliv { grid-area: deliv; }
+    /* Nothing delivered and nothing to press: the status already says so. */
+    td.c-deliv.is-empty { display: none; }
+    td.c-due::before,
+    td.c-post::before,
+    td.c-deliv.has-delivery::before {
       content: attr(data-label);
+      display: block;
+      margin-bottom: 4px;
       font-family: var(--font-mono);
-      font-size: 9.5px;
+      font-size: 10px;
       letter-spacing: .12em;
       text-transform: uppercase;
       color: var(--muted);
-      flex: none;
     }
-    tbody td > * { text-align: right; }
-    .t-name { text-align: right; }
-    .t-title-row { justify-content: flex-end; }
-    .track { height: 118px; }
+    .t-name { font-size: 15px; }
+    .t-due, .t-post { white-space: normal; font-size: 12px; }
+    .unit { display: inline; }
   }
 
   footer {
@@ -1357,6 +1488,13 @@
   }
   .brief-head h3 a { color: inherit; text-decoration: none; }
   .brief-head h3 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  /* The status and the copy button travel together, so a wrap never leaves
+     the button stranded on a line of its own. */
+  .brief-tools { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  @media (max-width: 560px) {
+    /* Identifier and tools on the first line, the title under them. */
+    .brief-head h3 { order: 3; flex-basis: 100%; }
+  }
 
   /* Verbatim, because the whole point is to see what the parser saw - so it
      wraps rather than truncating, and long briefs scroll inside the panel
@@ -1534,7 +1672,10 @@
 
   <div id="tab-board" role="tabpanel" aria-labelledby="tab-board-btn">
 
-  <section class="hero glass" id="hero" aria-label="Next deadline"></section>
+  <div class="summary glass">
+    <section class="hero" id="hero" aria-label="Next deadline"></section>
+    <div class="tiles" id="tiles" role="group" aria-label="Filter the table by status"></div>
+  </div>
 
   <section class="runway glass" aria-label="Scripts due over the next two weeks">
     <div class="runway-head">
@@ -1544,14 +1685,12 @@
     <div class="chart" id="track"></div>
   </section>
 
-  <section class="tiles" id="tiles" aria-label="Status summary"></section>
-
   <section>
-    <p class="eyebrow">Needs you now</p>
+    <p class="eyebrow">Needs you now <span id="urgent-count"></span></p>
     <div class="urgent" id="urgent"></div>
   </section>
 
-  <section>
+  <section id="everything">
     <div class="tablehead">
       <p class="eyebrow">Every assignment <span id="count"></span></p>
       <div class="controls">
@@ -1575,7 +1714,6 @@
             <th scope="col">Assignment</th>
             <th scope="col">Posts</th>
             <th scope="col">Deadline</th>
-            <th scope="col">Time</th>
             <th scope="col">Words</th>
             <th scope="col">Delivered</th>
           </tr>
@@ -1596,7 +1734,9 @@
         <option value="forwarded">Group: date forwarded</option>
       </select>
     </div>
-    <div class="briefs" id="briefs"></div>
+    <!-- Deliberately not named after the tab: an element whose id matched the
+         #briefs deep link would be scrolled up under the sticky header. -->
+    <div class="briefs" id="brief-list"></div>
 
     <details class="past-briefs" id="past-briefs" hidden>
       <summary>
@@ -1709,7 +1849,7 @@
     return ITEMS.filter(function (i) { return HIDDEN.indexOf(i.live) === -1; });
   }
 
-  var dateFmt, timeFmt, dayFmt, dayLongFmt, slateFmt, dayKeyFmt;
+  var dateFmt, timeFmt, dayFmt, dayLongFmt, slateFmt, dayKeyFmt, weekdayFmt;
 
   /* Intl only spells a zone's letters in the locale that uses them: "IST"
      needs en-IN, "BST" needs en-GB. Formatting stays en-US and only the zone
@@ -1765,6 +1905,7 @@
     dayFmt = makeFmt({ month: "short", day: "numeric" }, true);
     dayLongFmt = makeFmt({ weekday: "short", month: "short", day: "numeric" }, true);
     dayKeyFmt = makeFmt({ year: "numeric", month: "2-digit", day: "2-digit" }, true);
+    weekdayFmt = makeFmt({ weekday: "short" }, true);
   }
   buildFormatters();
   /* A publish slate is a calendar date, not a moment: render it in UTC so it
@@ -2051,19 +2192,8 @@
     left.appendChild(el("p", "eyebrow", over ? "Most overdue" : "Next deadline"));
     left.appendChild(linkedTitle(heroItem, "h2"));
 
-    var meta = el("div", "hero-meta");
-    var pill = el("span", "pill", META[heroItem.live].label);
-    pill.style.setProperty("--tone", META[heroItem.live].tone);
-    meta.appendChild(pill);
-    var heroShow = showBadge(heroItem);
-    if (heroShow) meta.appendChild(heroShow);
-    if (heroItem.slot) meta.appendChild(el("span", "slate", heroItem.slot));
-    var heroPost = postChip(heroItem, now);
-    if (heroPost) meta.appendChild(heroPost);
-    var heroJump = briefLink(heroItem);
-    if (heroJump) meta.appendChild(heroJump);
-    if (heroItem.word_count) meta.appendChild(el("span", null, heroItem.word_count.toLocaleString() + " words"));
-    meta.appendChild(el("span", null, "due " + fmt(heroItem.deadline)));
+    var meta = metaRow(heroItem, now);
+    meta.classList.add("hero-meta");
     left.appendChild(meta);
 
     var right = el("div");
@@ -2144,27 +2274,36 @@
       (noDate ? " \u00b7 " + noDate + " undated" : "");
 
     // --- buckets: late, then one per day, then everything further out -------
-    var width = host.clientWidth || 640;
-    var dayCount = Math.max(5, Math.min(14, Math.floor((width - 60) / 34)));
+    // Every column needs room for "Today" under it, with the late and later
+    // columns counted in. Any narrower and on a phone the labels ran into
+    // each other and the last one was clipped.
+    var plotWidth = (host.clientWidth || 640) - 44;   // less the y axis and its gap
+    var dayCount = Math.max(4, Math.min(14, Math.floor((plotWidth + 2) / 38) - 2));
     var buckets = [];
     var byKey = {};
 
-    buckets.push({ key: "late", label: "Late", late: true, items: [] });
+    buckets.push({ key: "late", label: "Late", name: "Overdue", late: true, items: [] });
     var cursor = new Date(now);
     for (var d = 0; d < dayCount; d++) {
       var when = new Date(+cursor + d * DAY);
       var key = dayKey(when);
+      var full = fmt(when.toISOString(), dayFmt);        // "Sep 21"
+      var date = full.replace(/^[A-Za-z]+ /, "");        // "21"
+      var weekday = d === 0 ? "Today" : fmt(when.toISOString(), weekdayFmt);
       var bucket = {
         key: key,
-        label: fmt(when.toISOString(), dayFmt).replace(/^[A-Za-z]+ /, ""),
-        full: fmt(when.toISOString(), dayFmt),
+        label: weekday,
+        // The first of a month carries its month, so a run of 30, 1, 2 does
+        // not read as the dates going backwards.
+        date: date === "1" ? full : date,
+        name: weekday + ", " + full,
         today: d === 0,
         items: []
       };
       byKey[key] = bucket;
       buckets.push(bucket);
     }
-    var later = { key: "later", label: "Later", items: [] };
+    var later = { key: "later", label: "Later", name: "Later", items: [] };
 
     var lastKey = buckets[buckets.length - 1].key;
     open.forEach(function (item) {
@@ -2210,8 +2349,19 @@
     tip.hidden = true;
 
     buckets.forEach(function (bucket, index) {
-      var col = el("button", "col" + (bucket.items.length ? " has-work" : ""));
-      col.type = "button";
+      // Only a day with work on it is a control. An empty day was a nameless
+      // button - a tab stop that a screen reader announced as just "button".
+      var busy = bucket.items.length > 0;
+      var col = el(busy ? "button" : "div", "col" + (busy ? " has-work" : ""));
+      if (busy) {
+        col.type = "button";
+        col.setAttribute("aria-label",
+          bucket.name + ": " + plural(bucket.total, "script") + " \u2014 " +
+          bucket.items.map(titleOf).join("; "));
+      } else {
+        col.setAttribute("aria-hidden", "true");
+      }
+      if (bucket.today) col.classList.add("today");
       var tone = bucket.late ? "var(--critical)" : "var(--accent)";
       col.style.setProperty("--tone", tone);
       col.style.setProperty("--rise", (index * 42) + "ms");
@@ -2241,9 +2391,7 @@
         var show = function () {
           tip.textContent = "";
           tip.appendChild(
-            el("b", null,
-              (bucket.late ? "Overdue" : bucket.full || bucket.label) +
-              " \u00b7 " + plural(bucket.total, "script"))
+            el("b", null, bucket.name + " \u00b7 " + plural(bucket.total, "script"))
           );
           var list = el("ul");
           bucket.items.forEach(function (item) {
@@ -2272,13 +2420,15 @@
 
     plotWrap.appendChild(plot);
 
+    // The columns carry their own names, so the axis is for the eye only.
     var xrow = el("div", "xrow");
+    xrow.setAttribute("aria-hidden", "true");
     buckets.forEach(function (bucket) {
-      xrow.appendChild(
-        el("div",
-          "xlabel" + (bucket.today ? " today" : "") + (bucket.late ? " late" : ""),
-          bucket.today ? "Today" : bucket.label)
-      );
+      var label = el("div",
+        "xlabel" + (bucket.today ? " today" : "") + (bucket.late ? " late" : ""));
+      label.appendChild(el("span", "wd", bucket.label));
+      if (bucket.date) label.appendChild(el("span", "dd", bucket.date));
+      xrow.appendChild(label);
     });
     plotWrap.appendChild(xrow);
 
@@ -2306,7 +2456,7 @@
     host.textContent = "";
     TILES.forEach(function (key, index) {
       var n = tally[key] || 0;
-      var btn = el("button", "tile glass" + (n ? "" : " zero"));
+      var btn = el("button", "tile" + (n ? "" : " zero"));
       btn.type = "button";
       btn.style.setProperty("--tone", tileTone(key));
       btn.setAttribute("aria-pressed", state.filter === key ? "true" : "false");
@@ -2327,16 +2477,57 @@
       btn.addEventListener("click", function () {
         state.filter = state.filter === key ? null : key;
         render();
+        if (state.filter) revealTable();
       });
       host.appendChild(btn);
     });
     lastCounts = tally;
   }
 
-  /* The chip both the cards and the hero use, so the posting date reads the
-     same wherever it appears. */
-  function showBadge(item) {
-    return item.project ? el("span", "show", item.project) : null;
+  /* A tile filters the table, and the table is a long way below it - so on
+     its own the click changed nothing you could see. Take the reader there,
+     and put focus on the matching chip so pressing it again clears it. */
+  function revealTable() {
+    var target = document.getElementById("everything");
+    if (!target) return;
+    try {
+      target.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" });
+    } catch (err) {
+      target.scrollIntoView(true);
+    }
+    var chip = document.querySelector('#chips .chip[aria-pressed="true"]');
+    if (chip) {
+      try { chip.focus({ preventScroll: true }); } catch (err) { /* old browser */ }
+    }
+  }
+
+  /* The show and the slot are one identifier - video numbers restart per
+     channel, so VIDEO-001 alone names nothing - and read as one chip. */
+  function identChip(item) {
+    if (!item.project && !item.slot) return null;
+    var chip = el("span", "ident");
+    if (item.project) chip.appendChild(el("span", "show", item.project));
+    if (item.slot) chip.appendChild(el("span", "slot", item.slot));
+    return chip;
+  }
+
+  function statusPill(item) {
+    var pill = el("span", "pill", META[item.live].label);
+    pill.style.setProperty("--tone", META[item.live].tone);
+    return pill;
+  }
+
+  /* With every assignment in one channel its name is the same words on every
+     line; it only says something once there are two to tell apart. */
+  var mixedChannels = false;
+
+  function channelsVary() {
+    var seen = Object.create(null);
+    var n = 0;
+    active().forEach(function (i) {
+      if (i.channel && !seen[i.channel]) { seen[i.channel] = true; n++; }
+    });
+    return n > 1;
   }
 
   function showsAvailable() {
@@ -2390,18 +2581,47 @@
     return chip;
   }
 
+  /* The deadline first, since it is the fact this board exists to watch,
+     then the length, then the channel when there is more than one. */
+  function factsLine(item) {
+    var line = el("span", "facts");
+    var parts = 0;
+    function next() {
+      if (parts++) line.appendChild(document.createTextNode(" \u00b7 "));
+    }
+    if (item.deadline) {
+      next();
+      line.appendChild(document.createTextNode("due "));
+      line.appendChild(el("b", null, fmt(item.deadline)));
+    }
+    if (item.word_count) {
+      next();
+      line.appendChild(document.createTextNode(item.word_count.toLocaleString() + " words"));
+    }
+    if (mixedChannels && item.channel) {
+      next();
+      line.appendChild(document.createTextNode("#" + item.channel));
+    }
+    return parts ? line : null;
+  }
+
+  /* One order wherever an assignment is summed up - the hero and every card:
+     status, what the script is, when it posts, then the facts. */
   function metaRow(item, now) {
     var row = el("div", "meta");
-    var badge = showBadge(item);
-    if (badge) row.appendChild(badge);
-    if (item.slot) row.appendChild(el("span", "slate", item.slot));
+    row.appendChild(statusPill(item));
+    var flag = reviewBadge(item);
+    if (flag) row.appendChild(flag);
+    var ident = identChip(item);
+    if (ident) row.appendChild(ident);
     var chip = postChip(item, now || new Date());
     if (chip) row.appendChild(chip);
-    var bits = [];
-    if (item.word_count) bits.push(item.word_count.toLocaleString() + " words");
-    if (item.channel) bits.push("#" + item.channel);
-    if (item.deadline) bits.push("due " + fmt(item.deadline));
-    bits.forEach(function (text) { row.appendChild(el("span", null, text)); });
+    var facts = factsLine(item);
+    if (facts) row.appendChild(facts);
+    // Last, as the one action in a row of facts. The brief panels build their
+    // own header, so this does not give a brief a button back to itself.
+    var jump = briefLink(item);
+    if (jump) row.appendChild(jump);
     return row;
   }
 
@@ -2409,6 +2629,7 @@
     var host = document.getElementById("urgent");
     host.textContent = "";
     var urgent = sorted(active().filter(function (i) { return URGENT.indexOf(i.live) !== -1; }));
+    document.getElementById("urgent-count").textContent = urgent.length ? String(urgent.length) : "";
 
     if (!urgent.length) {
       var ok = el("div", "empty glass");
@@ -2434,38 +2655,44 @@
       }
       entrance(card, item.thread_id + ":" + item.live, index);
 
-      var top = el("div", "card-top");
-      var head = el("div");
-      head.appendChild(linkedTitle(item, "h3"));
-      var pill = el("span", "pill", META[item.live].label);
-      pill.style.setProperty("--tone", META[item.live].tone);
-      head.appendChild(pill);
-      var flag = reviewBadge(item);
-      if (flag) head.appendChild(flag);
-      var cardJump = briefLink(item);
-      if (cardJump) head.appendChild(cardJump);
-      top.appendChild(head);
+      var grid = el("div", "card-grid");
+      grid.appendChild(linkedTitle(item, "h3"));
 
-      var c = countdown(item, now);
-      var clock = el("div", "clock");
-      clock.appendChild(document.createTextNode(c.main));
-      clock.appendChild(el("small", null, c.sub));
-      top.appendChild(clock);
+      // "over" and "left" already say which side of the deadline this is, so
+      // the countdown stands alone and sits level with the title. The one
+      // case that needs words is a brief with no date in it at all.
+      var clock = el("div", "clock", item.deadline ? countdown(item, now).main : "no date");
+      grid.appendChild(clock);
 
-      card.appendChild(top);
-      card.appendChild(metaRow(item, now));
-      (item.warnings || []).forEach(function (w) { card.appendChild(el("p", "warn", w)); });
+      grid.appendChild(metaRow(item, now));
+
       var mark = markButton(item);
-      if (mark) card.appendChild(mark);
+      if (mark) {
+        var act = el("div", "card-act");
+        act.appendChild(mark);
+        grid.appendChild(act);
+      }
+      card.appendChild(grid);
+
+      // The amber rule already says "warning"; a leading "!" on top of it
+      // is the parser's shorthand, not something to show a reader.
+      (item.warnings || []).forEach(function (w) {
+        card.appendChild(el("p", "warn", w.replace(/^!\s*/, "")));
+      });
       host.appendChild(card);
     });
   }
 
+  /* What each filter key holds - shared by the filter and the counts on its
+     chip, so a chip can never promise a number the table then disagrees with. */
+  function inBucket(item, key) {
+    if (key === "REVIEW") return !!item.needs_review;
+    if (key === "DELIVERED") return isDelivered(item);
+    return item.live === key;
+  }
+
   function matchesFilter(item) {
-    if (!state.filter) return true;
-    if (state.filter === "REVIEW") return !!item.needs_review;
-    if (state.filter === "DELIVERED") return item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE";
-    return item.live === state.filter;
+    return !state.filter || inBucket(item, state.filter);
   }
 
   function matchesQuery(item) {
@@ -2500,8 +2727,10 @@
     return copy;
   }
 
-  function cell(row, label, node) {
-    var td = el("td");
+  /* The class names the cell's slot in the phone layout, where a row is a
+     small grid rather than a line of columns. */
+  function cell(row, label, node, cls) {
+    var td = el("td", cls || null);
     td.setAttribute("data-label", label);
     td.appendChild(node);
     row.appendChild(td);
@@ -2518,9 +2747,9 @@
       list.length + (list.length === pool.length ? "" : " of " + pool.length);
 
     if (!list.length) {
-      var tr = el("tr");
+      var tr = el("tr", "empty-row");
       var td = el("td", null, "Nothing matches that filter.");
-      td.colSpan = 7;
+      td.colSpan = 6;
       td.style.color = "var(--muted)";
       tr.appendChild(td);
       host.appendChild(tr);
@@ -2530,27 +2759,26 @@
     list.forEach(function (item) {
       var tr = el("tr");
 
-      var pill = el("span", "pill", META[item.live].label);
-      pill.style.setProperty("--tone", META[item.live].tone);
-      var status = el("span");
-      status.appendChild(pill);
+      var status = el("span", "t-status");
+      status.appendChild(statusPill(item));
       var flag = reviewBadge(item);
       if (flag) status.appendChild(flag);
-      cell(tr, "Status", status);
+      cell(tr, "Status", status, "c-status");
 
       var name = el("div", "t-name");
+      // Title and brief button share a row, so the icon pins to the first
+      // line rather than wrapping under a short title.
       var titleRow = el("div", "t-title-row");
       titleRow.appendChild(linkedTitle(item, "span"));
       var jump = briefLink(item);
       if (jump) titleRow.appendChild(jump);
       name.appendChild(titleRow);
-      var subBits = [item.slot, item.channel ? "#" + item.channel : ""].filter(Boolean);
       var sub = el("span", "t-sub");
-      var badge = showBadge(item);
-      if (badge) sub.appendChild(badge);
-      sub.appendChild(document.createTextNode(subBits.join("  ·  ")));
-      if (badge || subBits.length) name.appendChild(sub);
-      cell(tr, "Assignment", name);
+      var ident = identChip(item);
+      if (ident) sub.appendChild(ident);
+      if (mixedChannels && item.channel) sub.appendChild(el("span", "t-chan", "#" + item.channel));
+      if (sub.childNodes.length) name.appendChild(sub);
+      cell(tr, "Assignment", name, "c-name");
 
       var days = daysUntilSlate(item.slate_date, now);
       var post = el("div", "t-post" + slateClass(days));
@@ -2558,40 +2786,49 @@
         item.slate_date ? fmt(item.slate_date, slateLongFmt) : "—"));
       var when = slateWhen(days);
       if (when) post.appendChild(el("span", null, when));
-      cell(tr, "Posts", post);
+      cell(tr, "Posts", post, "c-post");
 
-      cell(tr, "Deadline", el("span", "num", item.deadline ? fmt(item.deadline) : "—"));
-
+      // The date, then the time left against it - the same two lines the
+      // Posts column uses, so both dates in a row read the same way.
       var c = countdown(item, now);
-      var clock = el("span", "num", c.main);
-      clock.style.color = META[item.live].tone;
-      cell(tr, "Time", clock);
+      var due = el("div", "t-due");
+      due.appendChild(document.createTextNode(item.deadline ? fmt(item.deadline) : "—"));
+      var left = el("span", null, item.deadline || isDelivered(item) ? c.main : c.sub);
+      left.style.color = META[item.live].tone;
+      due.appendChild(left);
+      cell(tr, "Deadline", due, "c-due");
 
-      cell(tr, "Words", el("span", "num", item.word_count ? item.word_count.toLocaleString() : "—"));
+      var words = el("span", "num", item.word_count ? item.word_count.toLocaleString() : "—");
+      if (item.word_count) words.appendChild(el("span", "unit", " words"));
+      cell(tr, "Words", words, "c-words");
 
-      var sub = firstSubmission(item);
-      var delivered;
-      if (sub) {
-        var url = (sub.links || [])[0] || "";
-        if (url && /^https?:/i.test(url)) {
-          delivered = el("a", "link", fmt(sub.posted_at, timeFmt) || "open");
-          delivered.href = url;
-          delivered.target = "_blank";
-          delivered.rel = "noopener";
-        } else {
-          delivered = el("span", "num", fmt(sub.posted_at, timeFmt) || "yes");
-        }
-      } else {
-        delivered = el("span", "dash", "not yet");
-      }
-      var cellBody = el("span");
-      cellBody.appendChild(delivered);
+      // A mark button stands in for "not yet": it says the same thing and
+      // is the one thing to do about it. Stacking both is what used to
+      // push this column past the edge of the panel.
+      var delivery = firstSubmission(item);
       var rowMark = markButton(item);
-      if (rowMark) {
-        cellBody.appendChild(document.createElement("br"));
-        cellBody.appendChild(rowMark);
+      var deliv = el("div", "t-deliv");
+      var delivCls = "c-deliv";
+      if (delivery) {
+        var url = (delivery.links || [])[0] || "";
+        var stamp = fmt(delivery.posted_at, timeFmt);
+        var shown;
+        if (url && /^https?:/i.test(url)) {
+          shown = el("a", "link", stamp || "open");
+          shown.href = url;
+          shown.target = "_blank";
+          shown.rel = "noopener";
+        } else {
+          shown = el("span", "num", stamp || "yes");
+        }
+        deliv.appendChild(shown);
+        delivCls += " has-delivery";
+      } else if (!rowMark) {
+        deliv.appendChild(el("span", "dash", "not yet"));
+        delivCls += " is-empty";
       }
-      cell(tr, "Delivered", cellBody);
+      if (rowMark) deliv.appendChild(rowMark);
+      cell(tr, "Delivered", deliv, delivCls);
 
       host.appendChild(tr);
     });
@@ -2648,42 +2885,34 @@
   function renderChips() {
     var host = document.getElementById("chips");
     host.textContent = "";
-    var all = el("button", "chip", "All");
-    all.type = "button";
-    all.setAttribute("aria-pressed", state.filter ? "false" : "true");
-    all.addEventListener("click", function () { state.filter = null; render(); });
-    host.appendChild(all);
+    var pool = active();
+    function tally(key) {
+      return pool.filter(function (i) { return inBucket(i, key); }).length;
+    }
+    function chip(label, n, key) {
+      var button = el("button", "chip", label);
+      button.type = "button";
+      button.appendChild(el("span", "n", String(n)));
+      button.setAttribute("aria-pressed", state.filter === key ? "true" : "false");
+      button.addEventListener("click", function () {
+        state.filter = key === null || state.filter === key ? null : key;
+        render();
+      });
+      host.appendChild(button);
+    }
+
+    chip("All", pool.length, null);
 
     var chipKeys = TILES.slice();
     // Offer these only when there is something in them, so the row stays short
     // on an ordinary day but nothing becomes unreachable.
     ["DUE_SOON", "PENDING", "NO_DEADLINE"].forEach(function (key) {
-      var n = active().filter(function (i) { return i.live === key; }).length;
-      if (n) chipKeys.splice(chipKeys.length - 1, 0, key);
+      if (tally(key)) chipKeys.splice(chipKeys.length - 1, 0, key);
     });
+    chipKeys.forEach(function (key) { chip(tileLabel(key), tally(key), key); });
 
-    chipKeys.forEach(function (key) {
-      var chip = el("button", "chip", tileLabel(key));
-      chip.type = "button";
-      chip.setAttribute("aria-pressed", state.filter === key ? "true" : "false");
-      chip.addEventListener("click", function () {
-        state.filter = state.filter === key ? null : key;
-        render();
-      });
-      host.appendChild(chip);
-    });
-
-    var flagged = active().filter(function (i) { return i.needs_review; }).length;
-    if (flagged) {
-      var review = el("button", "chip", "Needs check (" + flagged + ")");
-      review.type = "button";
-      review.setAttribute("aria-pressed", state.filter === "REVIEW" ? "true" : "false");
-      review.addEventListener("click", function () {
-        state.filter = state.filter === "REVIEW" ? null : "REVIEW";
-        render();
-      });
-      host.appendChild(review);
-    }
+    var flagged = tally("REVIEW");
+    if (flagged) chip("Needs check", flagged, "REVIEW");
   }
 
   /* A short, relevant list: the board's own zone, the viewer's, and the few
@@ -2758,7 +2987,10 @@
     var stamp = DATA.fetched_at || DATA.generated_at;
     if (stamp) {
       var age = now - new Date(stamp);
-      fresh.textContent = age < 90 * 60e3 ? "synced " + span(age) + " ago" : "data " + span(age) + " old";
+      // Under a minute, span() says "0m" - true, and reads like a glitch.
+      fresh.textContent = age < 60e3 ? "synced just now"
+        : age < 90 * 60e3 ? "synced " + span(age) + " ago"
+        : "data " + span(age) + " old";
       fresh.classList.toggle("stale", age > DAY);
       fresh.title = "Snapshot taken " + fmt(stamp);
     } else {
@@ -2934,14 +3166,13 @@
     panel.id = "brief-" + item.thread_id;
 
     var head = el("div", "brief-head");
-    var badge = showBadge(item);
-    if (badge) head.appendChild(badge);
-    if (item.slot) head.appendChild(el("span", "slate", item.slot));
+    var ident = identChip(item);
+    if (ident) head.appendChild(ident);
     head.appendChild(linkedTitle(item, "h3"));
-    var pill = el("span", "pill", META[item.live].label);
-    pill.style.setProperty("--tone", META[item.live].tone);
-    head.appendChild(pill);
-    head.appendChild(copyButton(item));
+    var tools = el("span", "brief-tools");
+    tools.appendChild(statusPill(item));
+    tools.appendChild(copyButton(item));
+    head.appendChild(tools);
     panel.appendChild(head);
 
     // textContent, so a brief containing markup is shown, never run.
@@ -3041,13 +3272,15 @@
   }
 
   function renderBriefs() {
-    var host = document.getElementById("briefs");
+    var host = document.getElementById("brief-list");
     var button = document.getElementById("tab-briefs-btn");
     var items = briefItems();
 
     // A read-only viewer is never sent the text, so the tab would be an empty
-    // room. Hide it rather than explain it.
+    // room. Hide it rather than explain it - and the strip with it, since a
+    // lone Board tab is a control with nothing to switch to.
     button.hidden = !items.length;
+    document.getElementById("tabs").hidden = !items.length;
     if (!items.length) {
       if (state.tab === "briefs") setTab("board");
       host.textContent = "";
@@ -3110,6 +3343,7 @@
     var now = new Date();
     var wasOpen = !document.getElementById("notifs").hidden;
     decorate(now);
+    mixedChannels = channelsVary();
     renderHero(now);
     renderRunway(now);
     renderTiles(counts());
