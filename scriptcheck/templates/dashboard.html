@@ -198,32 +198,21 @@
     padding-block: 12px;
   }
   .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-  /* The logo keeps its own purple in either theme - a mark that restates the
-     page's accent variable is a swatch, not a brand. */
-  /* A supplied logo replaces the drawn mark entirely - no border, no stripes,
-     no background tinting whatever it is. */
-  img.mark {
-    background: none;
-    border: 0;
-    box-shadow: none;
-    border-radius: 7px;
-  }
+  /* The mark carries its own tile, corners and edge - the drawn one in its
+     SVG, a supplied one in the file itself. So this box stays undecorated:
+     a background or border here is a second, slightly different tile showing
+     past the artwork's rounded corners, which is what made the edge look
+     chipped. The logo also keeps its own purple in either theme; a mark that
+     restates the page's accent variable is a swatch, not a brand. */
   .mark {
     flex: none;
     display: block;
     width: 32px; height: 32px;
-    border-radius: 8px;
     object-fit: contain;
-    background:
-      repeating-linear-gradient(118deg,
-        color-mix(in srgb, var(--accent) 85%, transparent) 0 7px,
-        transparent 7px 14px),
-      linear-gradient(150deg,
-        color-mix(in srgb, var(--accent) 30%, transparent),
-        transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-    box-shadow: inset 0 1px 0 var(--gloss);
   }
+  /* 15/64 of the drawn mark's viewBox, so a supplied square image lands on
+     the same corner radius instead of near it. */
+  img.mark { border-radius: 7.5px; }
   h1 {
     font-family: var(--font-display);
     font-size: 18px;
