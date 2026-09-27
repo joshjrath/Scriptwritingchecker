@@ -12,7 +12,7 @@ from importlib import resources
 from typing import Iterable, Optional
 
 from .config import Config
-from .models import STATUS_LABEL, Assignment, Status
+from .models import BOARD_ONLY_FIELDS, STATUS_LABEL, Assignment, Status
 
 #: Reproduces the reset the Artifact host injects, so the standalone file and
 #: an embedded fragment render identically.
@@ -58,9 +58,9 @@ def build_payload(
         row = item.to_dict()
         row["status_label"] = STATUS_LABEL[item.status]
         if not can_edit:
-            # See without_briefs(): a read-only viewer never receives the
-            # brief text, only what the parser made of it.
-            row.pop("brief_text", None)
+            # See for_audience(): a read-only viewer never receives these.
+            for field in OWNER_ONLY_FIELDS:
+                row.pop(field, None)
         if redact_links:
             # Keep the fact of delivery, drop the URL itself.
             for submission in row["submissions"]:
@@ -82,18 +82,34 @@ def build_payload(
     }
 
 
-def without_briefs(payload: dict) -> dict:
-    """A copy of the payload with the forwarded brief text removed.
+#: Fields a read-only viewer never receives. /audit and /explain are
+#: owner-only because a brief quoted in full is more than a status board
+#: should hand out, and a share link follows the same rule.
+OWNER_ONLY_FIELDS = ("brief_text", "written_at")
 
-    /audit and /explain are owner-only because a brief quoted in full is more
-    than a status board should hand out, and the same applies to a read-only
-    share link. The text is absent from the JSON rather than hidden in the UI,
-    so it is not sitting in the page source waiting to be read.
+# BOARD_ONLY_FIELDS (from models) go further: not a viewer's page, and not the
+# plain /report.json or /events feeds either, whichever token asks. Another
+# dashboard that reads this board's data gets those feeds with the token it
+# was handed, so a private mark has to be absent from the feed outright;
+# hiding it in this page's UI would protect nothing.
+
+
+def for_audience(payload: dict, *, owner: bool, board: bool = True) -> dict:
+    """A copy of the payload holding only what this reader may see.
+
+    Fields are removed rather than hidden, so nothing private is sitting in
+    the JSON or the page source waiting to be read. The original payload is
+    left untouched.
     """
 
+    drop = set()
+    if not owner:
+        drop.update(OWNER_ONLY_FIELDS)
+    if not board:
+        drop.update(BOARD_ONLY_FIELDS)
     out = dict(payload)
     out["assignments"] = [
-        {key: value for key, value in row.items() if key != "brief_text"}
+        {key: value for key, value in row.items() if key not in drop}
         for row in payload.get("assignments", [])
     ]
     return out

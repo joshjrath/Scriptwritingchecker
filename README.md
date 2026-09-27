@@ -66,7 +66,7 @@ python -m scriptcheck report -i tests/fixtures/sample_threads.json --now 2026-09
 | `OVERDUE` | Deadline passed, no Drive link from you in the thread. **The one that costs money.** |
 | `DUE_TODAY` | Due within 24 hours, nothing delivered. |
 | `DUE_SOON` | Due within `due_soon_hours` (default 48). |
-| `PENDING` | Assigned to you, deadline further out. |
+| `PENDING` | Assigned to you, deadline further out. Shown on the board as **Upcoming**, because *Pending* there means something else - see below. |
 | `NO_DEADLINE` | Your role section exists but no deadline could be read — **go look manually**. |
 | `SUBMITTED` | Drive link posted before the deadline. |
 | `SUBMITTED_LATE` | Drive link posted, but after the deadline. |
@@ -308,6 +308,32 @@ That writes to `overrides.json`, the same file that holds every other hand
 correction, so it shows up as `Corrected by hand`, survives restarts, and is
 never silently reverted by a later parse.
 
+### Written, not sent — yours alone
+
+Beside **mark delivered** sits **done, not sent**: for a script you have
+finished but not handed in yet. Press it and the script moves to **Pending** —
+its own tile on the board, which filters the table to every script waiting to
+go. It leaves *Needs you now* and the scripts-due chart, since there is no more
+writing to do, but its countdown keeps the clock's colour: one that has run
+past its deadline still reads late until you send it. Press it again to take
+it back.
+
+This one is private, and more private than anything else here:
+
+- It never changes `status`. Everything the report says about a script is
+  exactly what it said before.
+- A view link never receives it — no tile, no button, and the mark is not in
+  its data at all.
+- **Nor does the plain `/report.json` or `/events` feed, even with your own
+  token.** Anything else that reads this board's data — another dashboard,
+  a script — gets the same payload it always did. Only the board's own page
+  asks for the mark (it adds `?view=board` to both feeds), and only with the
+  owner token does it get it.
+- It adds no warning and no `Corrected by hand` line, since those reach every
+  reader.
+
+It is stored in `overrides.json` as `written_at`, so it survives a restart.
+
 **On a hosted container, point it at a volume.** Railway, Fly and Render throw
 the filesystem away on every deploy, so an ordinary path is writable but not
 durable. Mount a volume at `/data` and set `"overrides_file": "/data/overrides.json"`
@@ -336,8 +362,10 @@ python -m scriptcheck serve
 | `/` | the board, in live mode |
 | `/events` | SSE stream; the page reconnects with backoff on its own |
 | `/report.json` | current state as JSON |
+| `…?view=board` | on either of the two above: the board's own shape, which with the owner token also carries your private *done, not sent* marks |
 | `/healthz` | `200` when the gateway is connected and a sync has happened, `503` otherwise — point your host's health check here |
 | `POST /mark` | mark an assignment delivered by hand, or undo it |
+| `POST /written` | mark a script done but not sent, or undo it — owner only, and private to your board |
 | `/audit` | the parse audit as plain text |
 | `/explain?q=Sans` | full parse trace for one thread; `/explain` alone lists them |
 
@@ -448,7 +476,7 @@ Two tokens, two levels:
 
 | | |
 | --- | --- |
-| `SCRIPTCHECK_ACCESS_TOKEN` | yours. Full board, the *mark delivered* buttons, `/audit` and `/explain`. |
+| `SCRIPTCHECK_ACCESS_TOKEN` | yours. Full board, the *mark delivered* and *done, not sent* buttons, the Pending tile, `/audit` and `/explain`. |
 | `SCRIPTCHECK_VIEW_TOKEN` | the link you hand out. Same board, read-only: no buttons, no writes, and no `/audit` or `/explain` (those quote the briefs back in full). |
 
 ```

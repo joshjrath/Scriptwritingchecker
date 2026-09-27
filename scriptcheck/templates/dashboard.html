@@ -34,6 +34,7 @@
     --unknown: #1b4fc4;
     --ok: #10683f;
     --pending: #57574e;
+    --written: #6a3fd1;
     --accent: #e84f00;
     --accent-ink: #ffffff;
 
@@ -74,6 +75,7 @@
       --unknown: #74acff;
       --ok: #45d6a0;
       --pending: #8e8e86;
+    --written: #b48cff;
       --accent: #ff5b04;
       --accent-ink: #0a0a0b;
 
@@ -106,6 +108,7 @@
     --unknown: #74acff;
     --ok: #45d6a0;
     --pending: #8e8e86;
+    --written: #b48cff;
     --accent: #ff5b04;
     --accent-ink: #0a0a0b;
 
@@ -1002,6 +1005,22 @@
     transition: border-color .12s ease, color .12s ease, background-color .12s ease;
   }
   .markbtn:hover { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+
+  /* The marking controls sit together; a failure note drops to its own line. */
+  .marks { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .marks .markerr { flex-basis: 100%; }
+  /* In the table they stack, so a second button adds height, never width -
+     the Delivered column is the last one before the panel's edge. */
+  .t-deliv .marks { flex-direction: column; align-items: flex-start; }
+
+  /* Written, not sent: a toggle, so its pressed state is the status itself. */
+  .markbtn.written:hover { color: var(--written); background: var(--panel-3); border-color: var(--written); }
+  .markbtn.written[aria-pressed="true"] {
+    color: var(--bg-0);
+    background: var(--written);
+    border-color: var(--written);
+  }
+  .markbtn.written[aria-pressed="true"]::before { content: "\2713  "; }
   .markbtn.undo:hover { color: var(--accent-ink); background: var(--critical); border-color: var(--critical); }
   .markbtn[disabled] { opacity: .5; cursor: progress; }
   .markbtn.failed { color: var(--critical); border-color: var(--critical); }
@@ -1673,7 +1692,11 @@
     DUE_TODAY:      { label: "Due today",      tone: "var(--today)",    rank: 1 },
     DUE_SOON:       { label: "Due soon",       tone: "var(--soon)",     rank: 2 },
     NO_DEADLINE:    { label: "No deadline",    tone: "var(--unknown)",  rank: 3 },
-    PENDING:        { label: "Pending",        tone: "var(--pending)",  rank: 4 },
+    // "Upcoming": assigned, with a deadline further out than due soon. It was
+    // labelled Pending until Pending came to mean written-not-sent below.
+    PENDING:        { label: "Upcoming",       tone: "var(--pending)",  rank: 4 },
+    // Written but not yet sent - a private mark, only ever on your own board.
+    WRITTEN:        { label: "Pending",        tone: "var(--written)",  rank: 4.5 },
     SUBMITTED_LATE: { label: "Delivered late", tone: "var(--ok)",       rank: 5 },
     SUBMITTED:      { label: "Delivered",      tone: "var(--ok)",       rank: 6 },
     NOT_MINE:       { label: "Not mine",       tone: "var(--muted)",    rank: 7 },
@@ -1684,6 +1707,11 @@
      scripts still carry their own status everywhere else - the cards, the
      table, the chart - so nothing is hidden by not having a tile. */
   var TILES = ["OVERDUE", "DUE_TODAY", "DELIVERED"];
+  /* Pending (written, not sent) sits beside Delivered, on the finished side.
+     It is yours alone: a view link is never sent the marks, so there it could
+     only ever read zero - better not to show it at all. */
+  var OWNER_TILES = ["OVERDUE", "DUE_TODAY", "WRITTEN", "DELIVERED"];
+  function tileKeys() { return DATA.can_edit === false ? TILES : OWNER_TILES; }
   var URGENT = ["OVERDUE", "DUE_TODAY", "DUE_SOON", "NO_DEADLINE"];
   /* Statuses that never belong in the counts, the chart or the table. */
   var HIDDEN = ["NOT_MINE", "IGNORED", "DUPLICATE"];
@@ -1821,7 +1849,18 @@
     return pad(Math.floor(s / 3600)) + ":" + pad(Math.floor((s % 3600) / 60)) + ":" + pad(s % 60);
   }
 
+  /* What the page shows. Written-not-sent overlays the clock's verdict but
+     never a delivery, and never touches `status` - the server does not even
+     send the mark to anyone but this board. */
   function liveStatus(item, now) {
+    var s = clockStatus(item, now);
+    if (item.written_at && s !== "SUBMITTED" && s !== "SUBMITTED_LATE" &&
+        HIDDEN.indexOf(s) === -1) return "WRITTEN";
+    return s;
+  }
+
+  /* Where the deadline alone puts it, whatever else is marked. */
+  function clockStatus(item, now) {
     var s = item.status;
     // These are decided by the server, not by the clock. Recomputing them from
     // the deadline would resurrect a duplicate as a live assignment.
@@ -1907,33 +1946,56 @@
     if (done && !markedByHand(item)) return null;  // detected on its own
 
     var undo = done;
-    var wrap = el("span");
-    var button = el("button", "markbtn" + (undo ? " undo" : ""), undo ? "undo" : "mark delivered");
-    button.type = "button";
-    wrap.appendChild(button);
+    var wrap = el("span", "marks");
 
-    function fail(message) {
-      button.disabled = false;
-      button.textContent = undo ? "undo" : "mark delivered";
-      button.classList.add("failed");
-      var note = el("span", "markerr", message);
-      wrap.appendChild(note);
+    /* Written, not yet sent: offered only while the script is still out, and
+       pressed while it is marked. A private mark - see liveStatus. */
+    if (!undo) {
+      var written = !!item.written_at;
+      wrap.appendChild(markControl(wrap, {
+        cls: "markbtn written",
+        label: "done, not sent",
+        pressed: written,
+        busy: written ? "undoing" : "saving",
+        title: written ? "Written and waiting to be sent - click to take it back"
+                       : "Mark written but not yet sent",
+        path: "written",
+        body: { thread_id: item.thread_id, undo: written }
+      }));
     }
+
+    wrap.appendChild(markControl(wrap, {
+      cls: "markbtn" + (undo ? " undo" : ""),
+      label: undo ? "undo" : "mark delivered",
+      busy: undo ? "undoing" : "saving",
+      path: "mark",
+      body: { thread_id: item.thread_id, undo: undo }
+    }));
+    return wrap;
+  }
+
+  /* One marking button. Every mark posts the same way and answers with the
+     fresh board, so they share one path and fail the same way too. */
+  function markControl(wrap, spec) {
+    var button = el("button", spec.cls, spec.label);
+    button.type = "button";
+    if (spec.title) button.title = spec.title;
+    if (spec.pressed !== undefined) button.setAttribute("aria-pressed", spec.pressed ? "true" : "false");
 
     button.addEventListener("click", function () {
       button.disabled = true;
       button.classList.remove("failed");
       var stale = wrap.querySelector(".markerr");
       if (stale) stale.remove();
-      button.textContent = undo ? "undoing" : "saving";
+      button.textContent = spec.busy;
 
       var response;
-      fetch("mark", {
+      fetch(spec.path, {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ thread_id: item.thread_id, undo: undo })
+        body: JSON.stringify(spec.body)
       })
         .then(function (r) {
           response = r;
@@ -1956,19 +2018,27 @@
           }
         })
         .catch(function (err) {
-          fail(String(err && err.message ? err.message : err));
+          button.disabled = false;
+          button.textContent = spec.label;
+          button.classList.add("failed");
+          wrap.appendChild(el("span", "markerr", String(err && err.message ? err.message : err)));
         });
     });
-    return wrap;
+    return button;
   }
 
   function decorate(now) {
-    ITEMS.forEach(function (item) { item.live = liveStatus(item, now); });
+    ITEMS.forEach(function (item) {
+      item.live = liveStatus(item, now);
+      // The countdown keeps the clock's colour, so a written script that has
+      // run past its deadline still reads as late until it is sent.
+      item.due = clockStatus(item, now);
+    });
   }
 
   function counts() {
     var out = {};
-    TILES.forEach(function (k) { out[k] = 0; });
+    tileKeys().forEach(function (k) { out[k] = 0; });
     active().forEach(function (item) {
       if (item.live === "SUBMITTED" || item.live === "SUBMITTED_LATE") out.DELIVERED++;
       else if (out[item.live] !== undefined) out[item.live]++;
@@ -2096,10 +2166,16 @@
     host.textContent = "";
 
     var mine = active();
+    // Writing still to do: a script already written is off the chart, the
+    // way it is off Needs you now - it waits under the Pending tile instead.
     var open = mine.filter(function (i) {
-      return i.live !== "SUBMITTED" && i.live !== "SUBMITTED_LATE" && i.deadline;
+      return i.live !== "SUBMITTED" && i.live !== "SUBMITTED_LATE" &&
+             i.live !== "WRITTEN" && i.deadline;
     });
-    var noDate = mine.filter(function (i) { return !i.deadline && i.live !== "SUBMITTED" && i.live !== "SUBMITTED_LATE"; }).length;
+    var noDate = mine.filter(function (i) {
+      return !i.deadline && i.live !== "SUBMITTED" && i.live !== "SUBMITTED_LATE" &&
+             i.live !== "WRITTEN";
+    }).length;
 
     if (!open.length) {
       note.textContent = noDate ? noDate + " without a deadline" : "";
@@ -2297,7 +2373,7 @@
   function renderTiles(tally) {
     var host = document.getElementById("tiles");
     host.textContent = "";
-    TILES.forEach(function (key, index) {
+    tileKeys().forEach(function (key, index) {
       var n = tally[key] || 0;
       var btn = el("button", "tile" + (n ? "" : " zero"));
       btn.type = "button";
@@ -2637,7 +2713,7 @@
       var due = el("div", "t-due");
       due.appendChild(document.createTextNode(item.deadline ? fmt(item.deadline) : "—"));
       var left = el("span", null, item.deadline || isDelivered(item) ? c.main : c.sub);
-      left.style.color = META[item.live].tone;
+      left.style.color = META[item.due || item.live].tone;
       due.appendChild(left);
       cell(tr, "Deadline", due, "c-due");
 
@@ -2746,11 +2822,15 @@
 
     chip("All", pool.length, null);
 
-    var chipKeys = TILES.slice();
+    var chipKeys = tileKeys().slice();
     // Offer these only when there is something in them, so the row stays short
-    // on an ordinary day but nothing becomes unreachable.
+    // on an ordinary day but nothing becomes unreachable. They go before the
+    // finished side - Pending and Delivered - so the row reads in order.
     ["DUE_SOON", "PENDING", "NO_DEADLINE"].forEach(function (key) {
-      if (tally(key)) chipKeys.splice(chipKeys.length - 1, 0, key);
+      if (!tally(key)) return;
+      var at = chipKeys.indexOf("WRITTEN");
+      if (at === -1) at = chipKeys.length - 1;
+      chipKeys.splice(at, 0, key);
     });
     chipKeys.forEach(function (key) { chip(tileLabel(key), tally(key), key); });
 
@@ -3279,7 +3359,7 @@
   }
 
   function refresh() {
-    return fetch("report.json", { cache: "no-store" })
+    return fetch("report.json?view=board", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(applyBoard)
       .catch(function () { setStatus("dropped", "offline"); });
@@ -3305,7 +3385,7 @@
     function connect() {
       var source;
       try {
-        source = new EventSource("events");
+        source = new EventSource("events?view=board");
       } catch (err) {
         startPolling();
         return;

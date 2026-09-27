@@ -18,11 +18,11 @@ from typing import Optional
 
 from .alerts import AlertTracker, format_digest
 from .audit import render_audit, render_explain
-from .overrides import clear_delivery, record_delivery
+from .overrides import clear_delivery, clear_written, record_delivery, record_written
 from .config import Config
 from .dashboard import render_dashboard
 from .models import Attachment, Author, Message, Thread
-from .dashboard import without_briefs
+from .dashboard import for_audience
 from .state import BoardState
 
 log = logging.getLogger("scriptcheck.live")
@@ -53,7 +53,8 @@ class LiveBoard:
         self.tracker = AlertTracker(
             lead_hours=config.reminder_lead_hours, kinds=config.alert_kinds
         )
-        # queue -> can_edit, so a viewer's stream never carries an owner payload
+        # queue -> (owner, board), so every stream gets exactly the payload its
+        # reader is allowed: a viewer never an owner's, a feed never the board's
         self.subscribers: dict = {}
         self.access_token = config.access_token or os.environ.get(
             "SCRIPTCHECK_ACCESS_TOKEN", ""
@@ -210,15 +211,16 @@ class LiveBoard:
     async def publish(self) -> None:
         payload = self.state.payload()
         variants = {}
-        for can_edit in (True, False):
-            payload["can_edit"] = can_edit
-            shaped = payload if can_edit else without_briefs(payload)
-            variants[can_edit] = json.dumps(shaped, ensure_ascii=False)
+        for audience in {tuple(a) for a in self.subscribers.values()}:
+            owner, board = audience
+            payload["can_edit"] = owner
+            shaped = for_audience(payload, owner=owner, board=board)
+            variants[audience] = json.dumps(shaped, ensure_ascii=False)
 
         dead = []
-        for queue, can_edit in list(self.subscribers.items()):
+        for queue, audience in list(self.subscribers.items()):
             try:
-                queue.put_nowait(variants[bool(can_edit)])
+                queue.put_nowait(variants[tuple(audience)])
             except asyncio.QueueFull:
                 dead.append(queue)
         for queue in dead:
@@ -290,12 +292,10 @@ class LiveBoard:
         )
 
     async def handle_report(self, request):
+        owner, board = self._audience(request)
         payload = self.state.payload()
-        can_edit = request.get("role", "owner") == "owner"
-        payload["can_edit"] = can_edit
-        if not can_edit:
-            payload = without_briefs(payload)
-        return self.web.json_response(payload)
+        payload["can_edit"] = owner
+        return self.web.json_response(for_audience(payload, owner=owner, board=board))
 
     async def handle_audit(self, request):
         """The parse audit as plain text, readable on a phone."""
@@ -383,8 +383,71 @@ class LiveBoard:
         # Hand the caller the new board. The push above updates every *other*
         # open page; this makes the clicking one correct even where the event
         # stream is blocked or buffered by a proxy.
+        return self._board_reply(request, thread_id, undo)
+
+    async def handle_written(self, request):
+        """Mark a script written but not yet sent, or undo it.
+
+        Private to the owner's own board: it never changes `status`, and the
+        mark itself is only sent back to a board that asks for it (see
+        for_audience), so neither a view link nor another dashboard reading
+        the feed can tell it is there.
+        """
+
+        try:
+            body = await request.json()
+        except Exception:
+            return self.web.json_response({"error": "expected JSON"}, status=400)
+
+        thread_id = str(body.get("thread_id") or "").strip()
+        if not thread_id:
+            return self.web.json_response({"error": "thread_id is required"}, status=400)
+        if not self.state.knows(thread_id):
+            return self.web.json_response({"error": "unknown thread"}, status=404)
+
+        undo = bool(body.get("undo"))
+        try:
+            if undo:
+                clear_written(self.config.overrides_file, thread_id)
+            else:
+                record_written(self.config.overrides_file, thread_id)
+        except OSError as exc:
+            log.exception("could not write overrides")
+            return self.web.json_response(
+                {
+                    "error": f"could not save: {exc}. The board needs a writable "
+                    "path for overrides_file - on Railway that means a volume."
+                },
+                status=500,
+            )
+
+        self.state.reload_overrides()
+        await self.publish()
+        return self._board_reply(request, thread_id, undo)
+
+    @staticmethod
+    def _audience(request) -> tuple:
+        """(owner, board) for this request.
+
+        `board` is the board's own page asking - it adds ?view=board to its
+        feeds. Anything else reading /report.json or /events is a feed reader,
+        and is never handed the owner's private marks even with the owner
+        token.
+        """
+
+        owner = request.get("role", "owner") == "owner"
+        board = request.query.get("view") == "board"
+        return owner, board
+
+    def _board_reply(self, request, thread_id: str, undo: bool):
+        # Hand the caller the new board. The push above updates every *other*
+        # open page; this makes the clicking one correct even where the event
+        # stream is blocked or buffered by a proxy. Only the board's own page
+        # posts here, so it gets the board's shape.
+        owner = request.get("role", "owner") == "owner"
         board = self.state.payload()
-        board["can_edit"] = request.get("role", "owner") == "owner"
+        board["can_edit"] = owner
+        board = for_audience(board, owner=owner, board=True)
         return self.web.json_response(
             {"ok": True, "thread_id": thread_id, "undo": undo, "board": board}
         )
@@ -421,12 +484,13 @@ class LiveBoard:
             }
         )
         await response.prepare(request)
-        can_edit = request.get("role", "owner") == "owner"
+        owner, board = self._audience(request)
         queue: asyncio.Queue = asyncio.Queue(maxsize=8)
-        self.subscribers[queue] = can_edit
+        self.subscribers[queue] = (owner, board)
         try:
             opening = self.state.payload()
-            opening["can_edit"] = can_edit
+            opening["can_edit"] = owner
+            opening = for_audience(opening, owner=owner, board=board)
             await response.write(
                 b"event: board\ndata: "
                 + json.dumps(opening, ensure_ascii=False).encode()
@@ -500,6 +564,7 @@ class LiveBoard:
         app.router.add_get("/", self.handle_index)
         app.router.add_get("/report.json", self.handle_report)
         app.router.add_post("/mark", self.handle_mark)
+        app.router.add_post("/written", self.handle_written)
         app.router.add_get("/audit", self.handle_audit)
         app.router.add_get("/explain", self.handle_explain)
         app.router.add_get("/events", self.handle_events)

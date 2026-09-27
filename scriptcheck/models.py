@@ -266,6 +266,13 @@ class Confidence(str, Enum):
         return {"HIGH": 0, "MEDIUM": 1, "LOW": 2}[self.value]
 
 
+#: Fields only the owner's own board is ever sent. Everything else that turns
+#: assignments into data - the plain /report.json and /events feeds whichever
+#: token asks, and `scriptcheck report -f json` - leaves them out, because
+#: whatever reads those may be someone else's dashboard.
+BOARD_ONLY_FIELDS = ("written_at",)
+
+
 @dataclass
 class Assignment:
     """A parsed thread plus the verdict on it."""
@@ -304,6 +311,10 @@ class Assignment:
     #: The opening message exactly as forwarded, kept so the board can show
     #: the brief it read rather than only what it made of it.
     brief_text: str = ""
+    #: When you marked it written but not yet sent. Private to your own board:
+    #: never part of `status`, which other readers of this data see. Listed in
+    #: BOARD_ONLY_FIELDS, so every serialiser but the board's leaves it out.
+    written_at: Optional[datetime] = None
 
     @property
     def needs_review(self) -> bool:
@@ -357,6 +368,7 @@ class Assignment:
             "overridden": list(self.overridden),
             "duplicate_of": self.duplicate_of,
             "brief_text": self.brief_text,
+            "written_at": _iso(self.written_at),
             "needs_review": self.needs_review,
         }
 

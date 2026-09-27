@@ -503,3 +503,139 @@ class TestMarkResponseCarriesTheBoard(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(body["board"]["can_edit"])
         finally:
             await client.close()
+
+
+class TestWrittenNotSent(unittest.IsolatedAsyncioTestCase):
+    """A private mark: written, not yet sent. Only the owner's own board sees it.
+
+    Not a view link, and not any other reader of the feeds either - another
+    dashboard pulling /report.json gets whatever the token it holds allows, so
+    the mark has to be missing from the plain feed even for the owner token.
+    """
+
+    async def asyncSetUp(self):
+        import tempfile
+
+        self.overrides = Path(tempfile.mkdtemp()) / "overrides.json"
+        config = Config(
+            my_user_ids=["111111111111111111"],
+            my_roles=["SCRIPT"],
+            access_token="owner-secret",
+            view_token="team-link",
+            overrides_file=str(self.overrides),
+        )
+        self.board = LiveBoard(config, token="x", host="127.0.0.1", port=0)
+        self.board.state.replace_all(load_threads(FIXTURE))
+        self.client = TestClient(TestServer(self.board.build_app()))
+        await self.client.start_server()
+
+    async def asyncTearDown(self):
+        await self.client.close()
+
+    async def mark(self, token="owner-secret", undo=False, thread_id="1003"):
+        return await self.client.post(
+            "/written?k=" + token, json={"thread_id": thread_id, "undo": undo}
+        )
+
+    async def rows(self, query):
+        payload = await (await self.client.get("/report.json?" + query)).json()
+        return {row["thread_id"]: row for row in payload["assignments"]}
+
+    # --- the mark itself -----------------------------------------------------
+
+    async def test_it_persists_and_leaves_the_status_alone(self):
+        self.assertEqual((await self.mark()).status, 200)
+        assignment = self.board.state.by_id(NOW)["1003"]
+        self.assertIsNotNone(assignment.written_at)
+        # `status` is what every other reader sees; it must not move.
+        self.assertEqual(assignment.status, Status.OVERDUE)
+        self.assertIn("written_at", json.loads(self.overrides.read_text())["1003"])
+
+    async def test_undo_takes_it_back_out(self):
+        await self.mark()
+        self.assertEqual((await self.mark(undo=True)).status, 200)
+        self.assertIsNone(self.board.state.by_id(NOW)["1003"].written_at)
+        self.assertEqual(json.loads(self.overrides.read_text()), {})
+
+    async def test_undo_leaves_a_delivery_alone(self):
+        await self.client.post("/mark?k=owner-secret", json={"thread_id": "1003"})
+        await self.mark()
+        await self.mark(undo=True)
+        entry = json.loads(self.overrides.read_text())["1003"]
+        self.assertIn("delivered_at", entry)
+        self.assertNotIn("written_at", entry)
+
+    async def test_it_announces_nothing_in_the_shared_fields(self):
+        # Warnings and the hand-correction list go to every reader, so a
+        # private mark must not add to either.
+        before = self.board.state.by_id(NOW)["1003"]
+        await self.mark()
+        after = self.board.state.by_id(NOW)["1003"]
+        self.assertEqual(after.warnings, before.warnings)
+        self.assertEqual(after.overridden, before.overridden)
+
+    # --- who gets to see it --------------------------------------------------
+
+    async def test_the_owners_board_sees_it(self):
+        await self.mark()
+        rows = await self.rows("k=owner-secret&view=board")
+        self.assertTrue(rows["1003"]["written_at"])
+
+    async def test_the_plain_feed_never_carries_it_even_with_the_owner_token(self):
+        # This is the one another dashboard would read.
+        await self.mark()
+        for row in (await self.rows("k=owner-secret")).values():
+            self.assertNotIn("written_at", row)
+
+    async def test_a_view_link_never_carries_it_even_asking_as_the_board(self):
+        await self.mark()
+        for query in ("k=team-link", "k=team-link&view=board"):
+            for row in (await self.rows(query)).values():
+                self.assertNotIn("written_at", row)
+
+    async def test_the_owners_page_has_it_and_the_view_page_does_not(self):
+        await self.mark()
+        stamp = self.board.state.by_id(NOW)["1003"].written_at.isoformat()
+        self.assertIn(stamp, await (await self.client.get("/?k=owner-secret")).text())
+        self.assertNotIn(stamp, await (await self.client.get("/?k=team-link")).text())
+
+    async def test_the_reply_to_the_click_carries_it(self):
+        payload = await (await self.mark()).json()
+        rows = {r["thread_id"]: r for r in payload["board"]["assignments"]}
+        self.assertTrue(rows["1003"]["written_at"])
+
+    async def test_each_open_stream_gets_only_its_own_shape(self):
+        async def open_stream(query):
+            stream = await self.client.get("/events?" + query)
+            await asyncio.wait_for(stream.content.readuntil(b"\n\n"), timeout=5)
+            return stream
+
+        async def next_rows(stream):
+            chunk = await asyncio.wait_for(stream.content.readuntil(b"\n\n"), timeout=5)
+            payload = json.loads(chunk.decode().split("data: ", 1)[1])
+            return {row["thread_id"]: row for row in payload["assignments"]}
+
+        board = await open_stream("k=owner-secret&view=board")
+        feed = await open_stream("k=owner-secret")
+        viewer = await open_stream("k=team-link&view=board")
+
+        await self.mark()  # publishes to every open stream
+
+        self.assertTrue((await next_rows(board))["1003"]["written_at"])
+        self.assertNotIn("written_at", (await next_rows(feed))["1003"])
+        self.assertNotIn("written_at", (await next_rows(viewer))["1003"])
+        for stream in (board, feed, viewer):
+            stream.close()
+
+    # --- who gets to set it --------------------------------------------------
+
+    async def test_a_viewer_cannot_mark_it(self):
+        self.assertEqual((await self.mark(token="team-link")).status, 404)
+        self.assertFalse(self.overrides.exists())
+
+    async def test_an_unknown_thread_is_refused(self):
+        self.assertEqual((await self.mark(thread_id="nope")).status, 404)
+
+    async def test_a_missing_thread_id_is_refused(self):
+        response = await self.client.post("/written?k=owner-secret", json={})
+        self.assertEqual(response.status, 400)

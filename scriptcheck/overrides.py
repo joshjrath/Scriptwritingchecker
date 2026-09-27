@@ -15,7 +15,10 @@ from typing import Any, Optional
 from .models import Assignment, Status, Submission
 
 #: Keys an override entry may carry.
-FIELDS = {"deadline", "status", "delivered_at", "links", "word_count", "note", "ignore"}
+FIELDS = {
+    "deadline", "status", "delivered_at", "links", "word_count", "note", "ignore",
+    "written_at",
+}
 
 
 def _parse_dt(value: Any) -> Optional[datetime]:
@@ -102,6 +105,33 @@ def clear_delivery(path: str | Path, thread_id: str) -> dict:
     return table
 
 
+def record_written(
+    path: str | Path, thread_id: str, when: Optional[datetime] = None
+) -> dict:
+    """Mark one script written but not yet sent, and persist it."""
+
+    table = load(path)
+    entry = dict(table.get(str(thread_id)) or {})
+    entry["written_at"] = (when or datetime.now(timezone.utc)).isoformat()
+    table[str(thread_id)] = entry
+    save(path, table)
+    return table
+
+
+def clear_written(path: str | Path, thread_id: str) -> dict:
+    """Take a script back out of written-not-sent, leaving other corrections."""
+
+    table = load(path)
+    entry = dict(table.get(str(thread_id)) or {})
+    entry.pop("written_at", None)
+    if entry:
+        table[str(thread_id)] = entry
+    else:
+        table.pop(str(thread_id), None)
+    save(path, table)
+    return table
+
+
 def apply(assignment: Assignment, entry: dict) -> Assignment:
     """Apply one override entry in place; record what it touched."""
 
@@ -139,6 +169,12 @@ def apply(assignment: Assignment, entry: dict) -> Assignment:
                 f"Use one of: {', '.join(s.value for s in Status)}"
             )
         assignment.overridden.append("status")
+
+    if entry.get("written_at"):
+        # Kept out of `overridden` and given no note on purpose: those both
+        # surface as warnings that every reader of the payload sees, which
+        # would announce a private mark to the people it is private from.
+        assignment.written_at = _parse_dt(entry["written_at"])
 
     if entry.get("note"):
         assignment.warnings.append(f"Manual note: {entry['note']}")

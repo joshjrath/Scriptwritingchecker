@@ -11,7 +11,9 @@ from typing import Iterable, Optional
 from zoneinfo import ZoneInfo
 
 from .config import Config
-from .models import STATUS_EMOJI, STATUS_LABEL, Assignment, Confidence, Status
+from .models import (
+    BOARD_ONLY_FIELDS, STATUS_EMOJI, STATUS_LABEL, Assignment, Confidence, Status,
+)
 
 
 def _local(dt: Optional[datetime], tz: str) -> str:
@@ -205,7 +207,12 @@ def render_json(
     payload = {
         "generated_at": now.isoformat(),
         "summary": {STATUS_LABEL[s]: counts[s] for s in Status if counts[s]},
-        "assignments": [a.to_dict() for a in assignments],
+        # A report file is data someone else may read, not the owner's
+        # board, so it never carries the board-only marks.
+        "assignments": [
+            {k: v for k, v in a.to_dict().items() if k not in BOARD_ONLY_FIELDS}
+            for a in assignments
+        ],
     }
     return json.dumps(payload, indent=2)
 

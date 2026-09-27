@@ -314,10 +314,10 @@ class TestBriefs(unittest.TestCase):
         self.assertNotIn(needle, render_dashboard(self.items, CONFIG, now=NOW, can_edit=False))
 
     def test_stripping_does_not_mutate_the_original(self):
-        from scriptcheck.dashboard import without_briefs
+        from scriptcheck.dashboard import for_audience
 
         payload = build_payload(self.items, CONFIG, now=NOW, can_edit=True)
-        stripped = without_briefs(payload)
+        stripped = for_audience(payload, owner=False)
         self.assertFalse(any("brief_text" in r for r in stripped["assignments"]))
         self.assertTrue(any("brief_text" in r for r in payload["assignments"]))
 
@@ -626,3 +626,93 @@ class TestAccessibility(unittest.TestCase):
         # Without the Briefs tab, a strip holding only Board switches nothing.
         block = self.html.split("function renderBriefs", 1)[1].split("\n  }", 1)[0]
         self.assertIn('document.getElementById("tabs").hidden = !items.length;', block)
+
+
+class TestWrittenOnTheBoard(unittest.TestCase):
+    """How the private written-not-sent mark shows up on the owner's page."""
+
+    @classmethod
+    def setUpClass(cls):
+        items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.html = render_dashboard(items, CONFIG, now=NOW, can_edit=True, live=True)
+
+    def block(self, name):
+        return self.html.split("function " + name, 1)[1].split("\n  }", 1)[0]
+
+    def test_pending_now_means_written_and_the_old_bucket_is_upcoming(self):
+        # Two different things must never share the word on one board.
+        self.assertIn('PENDING:        { label: "Upcoming"', self.html)
+        self.assertIn('WRITTEN:        { label: "Pending"', self.html)
+
+    def test_the_tile_is_the_owners_alone(self):
+        self.assertIn('var OWNER_TILES = ["OVERDUE", "DUE_TODAY", "WRITTEN", "DELIVERED"];', self.html)
+        self.assertIn("DATA.can_edit === false ? TILES : OWNER_TILES", self.html)
+        self.assertNotIn("WRITTEN", self.html.split("var TILES = ", 1)[1].split(";", 1)[0])
+        # every consumer of the tile list goes through the owner check
+        self.assertNotIn("TILES.forEach", self.html)
+        self.assertNotIn("TILES.slice()", self.html.replace("tileKeys().slice()", ""))
+
+    def test_a_delivery_always_beats_the_mark(self):
+        block = self.block("liveStatus")
+        self.assertIn('item.written_at && s !== "SUBMITTED" && s !== "SUBMITTED_LATE"', block)
+
+    def test_the_countdown_keeps_the_clocks_colour(self):
+        # A written script past its deadline still reads late until it is sent.
+        self.assertIn("item.due = clockStatus(item, now);", self.html)
+        self.assertIn("META[item.due || item.live].tone", self.html)
+
+    def test_a_written_script_is_off_the_writing_chart(self):
+        runway = self.block("renderRunway")
+        self.assertIn('i.live !== "WRITTEN" && i.deadline', runway)
+
+    def test_the_board_asks_for_its_own_shape_on_both_feeds(self):
+        self.assertIn('fetch("report.json?view=board"', self.html)
+        self.assertIn('new EventSource("events?view=board")', self.html)
+
+    def test_the_control_inherits_the_mark_buttons_guards(self):
+        # Built inside markButton, so it is absent on a static export, on a
+        # view link, and once a script is delivered - the same as that button.
+        block = self.block("markButton")
+        self.assertLess(block.index("if (DATA.can_edit === false) return null;"),
+                        block.index('path: "written"'))
+        self.assertIn("if (!undo) {", block)
+
+    def test_it_has_its_own_colour(self):
+        self.assertEqual(self.html.count("--written: #"), 3)   # light, dark, dark again
+        self.assertIn('WRITTEN:        { label: "Pending",        tone: "var(--written)"', self.html)
+
+
+class TestWrittenStaysOffEveryFeed(unittest.TestCase):
+    """The written-not-sent mark leaves nowhere but the owner's board."""
+
+    def setUp(self):
+        self.items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        self.items[0].written_at = NOW
+
+    def test_the_json_report_never_carries_it(self):
+        from scriptcheck.report import render_json
+
+        rows = json.loads(render_json(self.items, CONFIG, now=NOW))["assignments"]
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertNotIn("written_at", row)
+
+    def test_it_does_not_move_the_reported_status(self):
+        from scriptcheck.report import render_json
+
+        before = [a.status.value for a in self.items]
+        rows = json.loads(render_json(self.items, CONFIG, now=NOW))["assignments"]
+        self.assertEqual([r["status"] for r in rows], before)
+
+    def test_the_owners_page_carries_it_and_a_viewers_does_not(self):
+        stamp = NOW.isoformat()
+        owner = build_payload(self.items, CONFIG, now=NOW, can_edit=True)
+        viewer = build_payload(self.items, CONFIG, now=NOW, can_edit=False)
+        self.assertEqual(owner["assignments"][0]["written_at"], stamp)
+        self.assertNotIn("written_at", viewer["assignments"][0])
+
+    def test_one_list_decides_it_for_every_serialiser(self):
+        from scriptcheck import dashboard, models, report
+
+        self.assertIs(dashboard.BOARD_ONLY_FIELDS, models.BOARD_ONLY_FIELDS)
+        self.assertIs(report.BOARD_ONLY_FIELDS, models.BOARD_ONLY_FIELDS)
