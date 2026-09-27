@@ -716,3 +716,36 @@ class TestWrittenStaysOffEveryFeed(unittest.TestCase):
 
         self.assertIs(dashboard.BOARD_ONLY_FIELDS, models.BOARD_ONLY_FIELDS)
         self.assertIs(report.BOARD_ONLY_FIELDS, models.BOARD_ONLY_FIELDS)
+
+
+class TestChannelsOnTheBoard(unittest.TestCase):
+    """The show filter and chips follow the studio's channel list."""
+
+    @classmethod
+    def setUpClass(cls):
+        items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.payload = build_payload(items, CONFIG, now=NOW)
+        cls.html = render_dashboard(items, CONFIG, now=NOW)
+
+    def block(self, name):
+        return self.html.split("function " + name, 1)[1].split("\n  }", 1)[0]
+
+    def test_the_page_is_given_the_catalog(self):
+        self.assertEqual(self.payload["show_catalog"], CONFIG.show_catalog)
+        self.assertIn("Specular Documentaries", self.payload["show_catalog"]["Stories"])
+
+    def test_the_filter_lists_every_channel_by_category(self):
+        picker = self.block("renderShowPicker")
+        self.assertIn('el("optgroup")', picker)
+        self.assertIn("box.label = group;", picker)
+        # the whole slate shows, but an empty channel cannot be picked
+        self.assertIn("opt.disabled = !n;", picker)
+
+    def test_shows_run_in_the_studios_order_not_alphabetically(self):
+        self.assertIn("showRank(a) - showRank(b)", self.block("showsAvailable"))
+        self.assertIn("showRank(pa)", self.block("sorted"))
+
+    def test_a_chip_drops_the_shared_brand_but_keeps_the_full_name_on_hover(self):
+        chip = self.block("identChip")
+        self.assertIn("showShortName(item.project)", chip)
+        self.assertIn("show.title = item.project;", chip)

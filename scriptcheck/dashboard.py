@@ -76,6 +76,8 @@ def build_payload(
         "roles": list(config.my_roles),
         "logo_url": config.logo_url,
         "board_title": config.board_title,
+        # So the show filter can list the channels in the studio's own order.
+        "show_catalog": config.show_catalog,
         "live": live,
         "can_edit": can_edit,
         "assignments": rows,

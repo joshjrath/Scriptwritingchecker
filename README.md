@@ -297,6 +297,29 @@ revised brief. If the copies disagree about the deadline that is said out loud
 rather than quietly resolved, because a moved deadline and a stray double-tap
 look identical to a parser.
 
+### Which channel a brief is for
+
+The board knows the studio's channels (`show_catalog` in the config; the
+Stories list ships as the default) and files each brief under one, in
+whatever form the brief names it: `@ Specular Anime`, `@ FNAF`,
+`Channel: specular horror`, `#specular-documentaries`, or the name alone on
+its own line. A short form like `FNAF` only counts where the brief has
+already said *this is the channel* — a label or an `@` tag — since a bare
+line reading "Horror" could be something else. Two lines naming two
+different channels decide nothing, and a passing mention in a sentence is
+not a filing. A show that is not in the list is kept exactly as written.
+
+Chips show only the part that tells channels apart (`ANIME`, `FNAF`) with the
+full name on hover. The show filter lists every channel in the studio's
+order, grouped by category, with a count; ones with nothing on the board are
+listed but cannot be picked. **Sort: show** follows the same order.
+
+Only text the bot can read counts. It is not in the studio's server, so a
+channel that appears in a brief only as a Discord role or channel mention —
+`<@&1234…>` rather than a name — cannot be resolved. `/audit` counts how many
+briefs were filed under one (*show found*), and `/explain?q=…` shows which,
+for any single brief.
+
 ### Marking things delivered
 
 The delivery itself happens in *their* server, where this bot cannot see — so in
@@ -661,6 +684,7 @@ embedding in a host that supplies its own document shell.
 | `my_names` | `["Josh"]` | Usernames / nicknames, used when no ID is available. |
 | `my_roles` | `["SCRIPT"]` | Role sections you are responsible for. |
 | `known_roles` | SCRIPT, VOICE OVER, THUMBNAIL, EDIT, … | Headers used to split a brief into sections. |
+| `show_catalog` | the 14 Stories channels | The studio's channels by category, in board order, e.g. `{"Stories": [...], "Gaming": [...]}`. |
 | `guild_ids` / `channel_ids` | `[]` | Restrict the fetch. |
 | `channel_name_patterns` | `[]` | Regexes matched against channel names when no IDs are given. |
 | `include_archived` | `true` | Also walk archived threads. |

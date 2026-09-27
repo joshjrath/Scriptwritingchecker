@@ -679,11 +679,80 @@ RE_SHOW_TAG = re.compile(
 PLACEHOLDERS = {"tbd", "tba", "n/a", "na", "none", "-", "--", "?", "xxx"}
 
 
-def parse_project(body: str) -> str:
+#: The channels a brief can belong to, grouped the way the studio groups them.
+#: Order matters: it is the order the board lists them in.
+DEFAULT_SHOW_CATALOG: dict[str, list[str]] = {
+    "Stories": [
+        "Specular Studios",
+        "Specular Anime",
+        "Specular Comics",
+        "Specular Animation",
+        "Specular Law",
+        "Specular Manga",
+        "Specular FNAF",
+        "Specular Force",
+        "Specular Verse",
+        "Specular Horror",
+        "Specular YOU",
+        "Specular Battles",
+        "Specular Survives",
+        "Specular Documentaries",
+    ],
+}
+
+
+def show_key(text: str) -> str:
+    """A show name the way people actually write it, reduced for comparing:
+    any case, as an @mention or a #channel-slug, with stray punctuation."""
+
+    text = re.sub(r"[#@*`~>|\[\]()]", " ", text or "")
+    text = re.sub(r"[-_.]+", " ", text)
+    return " ".join(re.sub(r"[^\w\s]", " ", text).lower().split())
+
+
+class ShowCatalog:
+    """Recognises the studio's channel names in whatever form a brief uses."""
+
+    def __init__(self, groups: Optional[dict] = None):
+        self.names = [n for names in (groups or {}).values() for n in names]
+        self._full = {show_key(n): n for n in self.names}
+        # Every name here starts "Specular ...", which tells them apart not at
+        # all; "@ Anime" in a brief still means Specular Anime. Only used where
+        # the brief has already said "this is the show" (a label or a tag) -
+        # a bare line reading "Horror" is too likely to be something else.
+        firsts = {show_key(n).split(" ", 1)[0] for n in self.names}
+        self._short = {}
+        if len(self.names) > 1 and len(firsts) == 1:
+            brand = firsts.pop()
+            for name in self.names:
+                rest = show_key(name)[len(brand):].strip()
+                if rest:
+                    self._short[rest] = name
+
+    def __bool__(self) -> bool:
+        return bool(self.names)
+
+    def named(self, text: str) -> str:
+        """The channel `text` names outright - the full name, any form."""
+        return self._full.get(show_key(text), "")
+
+    def canonical(self, text: str) -> str:
+        """The channel an explicit label or tag names, short forms included."""
+        key = show_key(text)
+        return self._full.get(key) or self._short.get(key, "")
+
+
+def parse_project(body: str, catalog: Optional[ShowCatalog] = None) -> str:
     """The show a brief belongs to.
 
     Video numbers restart per channel, so they identify nothing on their own;
     the project is what tells two VIDEO-001s apart.
+
+    With a catalog, a known channel is returned under its proper name, and a
+    line that is nothing but a channel's name counts too - in that order:
+    a labelled channel, a tagged channel, then a line naming one. Two lines
+    naming two different channels decide nothing. Failing all that, whatever
+    the label or tag said is returned as written, as before.
     """
 
     lines = (body or "").splitlines()
@@ -715,4 +784,12 @@ def parse_project(body: str) -> str:
         if value and value.lower() not in PLACEHOLDERS and len(value) <= 40:
             labelled = value
 
+    if catalog:
+        for candidate in (labelled, tagged):
+            known = catalog.canonical(candidate) if candidate else ""
+            if known:
+                return known
+        on_a_line = {catalog.named(line) for line in lines} - {""}
+        if len(on_a_line) == 1:
+            return on_a_line.pop()
     return labelled or tagged

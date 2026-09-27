@@ -10,7 +10,7 @@ from datetime import time
 from pathlib import Path
 from typing import Any, Optional
 
-from .parsing import DEFAULT_LINK_PATTERNS, DEFAULT_ROLES
+from .parsing import DEFAULT_LINK_PATTERNS, DEFAULT_ROLES, DEFAULT_SHOW_CATALOG
 
 DEFAULT_CONFIG_PATHS = [
     Path("scriptcheck.config.json"),
@@ -65,6 +65,11 @@ class Config:
     my_roles: list[str] = field(default_factory=lambda: ["SCRIPT"])
     #: Roles recognised when splitting an opening post into sections.
     known_roles: list[str] = field(default_factory=lambda: list(DEFAULT_ROLES))
+    #: The studio's channels, by category, in the order the board lists them.
+    #: A brief naming one is filed under it; add a category as a new key.
+    show_catalog: dict[str, list[str]] = field(
+        default_factory=lambda: {k: list(v) for k, v in DEFAULT_SHOW_CATALOG.items()}
+    )
 
     # --- where to look ------------------------------------------------------
     guild_ids: list[str] = field(default_factory=list)

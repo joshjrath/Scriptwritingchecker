@@ -31,6 +31,7 @@ def coverage(threads: list[Thread], assignments: list[Assignment], config: Confi
         "deadline_found": sum(1 for a in assignments if a.deadline),
         "deadline_with_timezone": sum(1 for a in assignments if a.deadline_tz),
         "word_count_found": sum(1 for a in assignments if a.word_count),
+        "show_found": sum(1 for a in assignments if a.project),
         "needs_review": sum(1 for a in assignments if a.needs_review),
         "by_confidence": dict(by_confidence),
         "overridden": sum(1 for a in assignments if a.overridden),
@@ -85,6 +86,7 @@ def render_audit(
         ("deadline found", "deadline_found"),
         ("  ... with a timezone", "deadline_with_timezone"),
         ("word count found", "word_count_found"),
+        ("show found", "show_found"),
     ]:
         out.append(f"  {label:<24} {stats[key]:>4} / {total:<4} {pct(stats[key], total)}")
 
@@ -176,6 +178,8 @@ def render_explain(thread: Thread, config: Config, now: Optional[datetime] = Non
     else:
         out.append("  deadline   : NOT FOUND")
     out.append(f"  word count : {assignment.word_count or '(not found)'}")
+    # "show", because `channel` above is the Discord channel it was read from.
+    out.append(f"  show       : {assignment.project or '(not found)'}")
     out.append("")
 
     out.append(f"SUBMISSIONS ({len(assignment.submissions)})")

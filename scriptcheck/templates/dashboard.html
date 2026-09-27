@@ -2425,7 +2425,11 @@
   function identChip(item) {
     if (!item.project && !item.slot) return null;
     var chip = el("span", "ident");
-    if (item.project) chip.appendChild(el("span", "show", item.project));
+    if (item.project) {
+      var show = el("span", "show", showShortName(item.project));
+      show.title = item.project;
+      chip.appendChild(show);
+    }
     if (item.slot) chip.appendChild(el("span", "slot", item.slot));
     return chip;
   }
@@ -2449,13 +2453,42 @@
     return n > 1;
   }
 
+  /* The studio's channels, in its own order. Every name starts "Specular",
+     which tells them apart not at all, so chips show only the part that does
+     - ANIME, FNAF - with the full name a hover away. */
+  function catalogNames() {
+    var out = [];
+    var groups = DATA.show_catalog || {};
+    Object.keys(groups).forEach(function (group) {
+      (groups[group] || []).forEach(function (name) { out.push(name); });
+    });
+    return out;
+  }
+
+  function showShortName(name) {
+    var names = catalogNames();
+    if (names.indexOf(name) === -1 || names.length < 2) return name;
+    var brand = names[0].split(" ")[0];
+    var shared = names.every(function (n) { return n.split(" ")[0] === brand; });
+    var rest = shared ? name.slice(brand.length).trim() : "";
+    return rest || name;
+  }
+
+  /* Catalog order, then anything else a brief was tagged with, A to Z. */
+  function showRank(name) {
+    var at = catalogNames().indexOf(name);
+    return at === -1 ? 1e6 : at;
+  }
+
   function showsAvailable() {
     var seen = Object.create(null);
     var out = [];
     active().forEach(function (i) {
       if (i.project && !seen[i.project]) { seen[i.project] = true; out.push(i.project); }
     });
-    return out.sort();
+    return out.sort(function (a, b) {
+      return showRank(a) - showRank(b) || a.localeCompare(b);
+    });
   }
 
   function renderShowPicker() {
@@ -2466,16 +2499,38 @@
     picker.hidden = shows.length < 2;
     if (picker.hidden) { state.show = ""; return; }
 
+    var count = Object.create(null);
+    active().forEach(function (i) { if (i.project) count[i.project] = (count[i.project] || 0) + 1; });
+
     var wanted = state.show;
     picker.textContent = "";
     var all = el("option", null, "All shows");
     all.value = "";
     picker.appendChild(all);
-    shows.forEach(function (name) {
-      var option = el("option", null, name);
-      option.value = name;
-      picker.appendChild(option);
+
+    function option(name) {
+      var n = count[name] || 0;
+      var opt = el("option", null, name + " \u00b7 " + n);
+      opt.value = name;
+      // The full list, so the whole slate is in view; a channel with nothing
+      // on the board is shown but cannot be picked into an empty table.
+      opt.disabled = !n;
+      return opt;
+    }
+    var groups = DATA.show_catalog || {};
+    Object.keys(groups).forEach(function (group) {
+      var box = el("optgroup");
+      box.label = group;
+      (groups[group] || []).forEach(function (name) { box.appendChild(option(name)); });
+      picker.appendChild(box);
     });
+    var other = shows.filter(function (name) { return showRank(name) === 1e6; });
+    if (other.length) {
+      var rest = el("optgroup");
+      rest.label = Object.keys(groups).length ? "Other" : "Shows";
+      other.forEach(function (name) { rest.appendChild(option(name)); });
+      picker.appendChild(rest);
+    }
     // A show can disappear between renders (delivered, filtered, re-parsed),
     // so fall back to all rather than filtering to nothing.
     picker.value = shows.indexOf(wanted) === -1 ? "" : wanted;
@@ -2626,10 +2681,14 @@
     copy.sort(function (a, b) {
       if (state.sort === "title") return (a.title || "").localeCompare(b.title || "");
       if (state.sort === "show") {
-        // Unnamed shows last, then chronological within each show.
+        // The studio's order, then other shows A to Z, unnamed last - and
+        // chronological within each show.
         var pa = a.project || "\uffff";
         var pb = b.project || "\uffff";
-        if (pa !== pb) return pa.localeCompare(pb);
+        if (pa !== pb) {
+          return (a.project ? showRank(pa) : 2e6) - (b.project ? showRank(pb) : 2e6) ||
+                 pa.localeCompare(pb);
+        }
         return (a.slate_date ? +new Date(a.slate_date) : far) -
                (b.slate_date ? +new Date(b.slate_date) : far);
       }

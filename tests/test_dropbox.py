@@ -419,3 +419,152 @@ class TestDuplicateForwards(unittest.TestCase):
         alerts = tracker.scan(items, NOW)
         # One new assignment announced, not two.
         self.assertEqual(len(alerts), 1)
+
+
+class TestShowCatalog(unittest.TestCase):
+    """The studio's channel list: named any way a brief names it, filed once."""
+
+    def setUp(self):
+        from scriptcheck.parsing import DEFAULT_SHOW_CATALOG, ShowCatalog
+
+        self.catalog = ShowCatalog(DEFAULT_SHOW_CATALOG)
+
+    def show(self, text):
+        from scriptcheck.parsing import parse_project
+
+        return parse_project(text, self.catalog)
+
+    def test_the_default_is_the_fourteen_stories_channels(self):
+        from scriptcheck.parsing import DEFAULT_SHOW_CATALOG
+
+        stories = DEFAULT_SHOW_CATALOG["Stories"]
+        self.assertEqual(len(stories), 14)
+        self.assertEqual(stories[0], "Specular Studios")
+        self.assertEqual(stories[-1], "Specular Documentaries")
+
+    def test_every_form_lands_on_the_proper_name(self):
+        for text, want in [
+            ("@ Specular Anime\n", "Specular Anime"),
+            ("Channel: specular horror\n", "Specular Horror"),
+            ("\U0001f4c1 Project\nSpecular Law\n", "Specular Law"),
+            ("#specular-documentaries\n", "Specular Documentaries"),
+            ("@Specular YOU\n", "Specular YOU"),
+            ("• Specular Battles\n", "Specular Battles"),
+            ("**Specular Manga**\n", "Specular Manga"),
+        ]:
+            self.assertEqual(self.show(text), want, text)
+
+    def test_a_short_form_counts_where_the_brief_says_it_is_the_show(self):
+        self.assertEqual(self.show("@ FNAF\n"), "Specular FNAF")
+        self.assertEqual(self.show("Show: Anime\n"), "Specular Anime")
+
+    def test_a_short_form_on_a_bare_line_does_not(self):
+        # "Horror" alone could be a genre note; only a label or a tag has said
+        # "this is the channel".
+        self.assertEqual(self.show("Genre\nHorror\n"), "")
+
+    def test_a_passing_mention_is_not_a_filing(self):
+        self.assertEqual(self.show("Tone like our Specular Anime video.\n"), "")
+
+    def test_two_channels_decide_nothing(self):
+        self.assertEqual(self.show("Specular Anime\nSpecular Manga\n"), "")
+
+    def test_a_label_or_tag_naming_a_channel_beats_a_line(self):
+        self.assertEqual(self.show("Channel: Specular Law\nSpecular Anime\n"), "Specular Law")
+
+    def test_a_channel_on_a_line_beats_an_unknown_tag(self):
+        self.assertEqual(self.show("@ UTDR\nSpecular Anime\n"), "Specular Anime")
+
+    def test_an_unknown_show_is_still_kept_as_written(self):
+        self.assertEqual(self.show("\U0001f4c1 Project\nTBD\n\n@ UTDR\n"), "UTDR")
+
+    def test_a_person_is_still_not_a_show(self):
+        self.assertEqual(self.show("@Josh\n"), "")
+
+    def test_without_a_catalog_nothing_changes(self):
+        from scriptcheck.parsing import parse_project
+
+        self.assertEqual(parse_project("@ FNAF\n"), "FNAF")
+
+    def test_config_carries_it_and_can_replace_it(self):
+        from scriptcheck.config import Config
+
+        self.assertIn("Specular Anime", Config().show_catalog["Stories"])
+        custom = Config.from_dict({"show_catalog": {"Gaming": ["Specular Minecraft"]}})
+        self.assertEqual(custom.show_catalog, {"Gaming": ["Specular Minecraft"]})
+
+    def test_the_engine_files_a_brief_under_its_channel(self):
+        from scriptcheck.config import Config
+        from scriptcheck.engine import build_assignment
+        from scriptcheck.models import Author, Message, Thread
+
+        me = Author(id="111", name="Josh")
+        body = (
+            "10-03-26 | VIDEO-008 | Test\n\n@ Specular Anime\n\n"
+            "\U0001f4dd SCRIPT <@111>\n• Deadline: 9/28/2026 @ 11:59 PM ET\n"
+        )
+        thread = Thread(
+            id="9", name="10-03-26 | VIDEO-008 | Test",
+            messages=[Message(id="1", author=me, content=body)],
+        )
+        config = Config(my_user_ids=["111"], my_roles=["SCRIPT"])
+        self.assertEqual(build_assignment(thread, config).project, "Specular Anime")
+
+
+class TestChannelNamesAndDuplicates(unittest.TestCase):
+    def test_two_spellings_of_one_channel_are_one_video(self):
+        # Duplicates are matched on show + title. Before the catalog, "@ FNAF"
+        # and "@ Specular FNAF" were two different shows, so a re-forward
+        # tagged the other way slipped through as a second assignment.
+        from datetime import datetime, timezone
+
+        from scriptcheck.config import Config
+        from scriptcheck.engine import build_assignments
+        from scriptcheck.models import Author, Message, Status, Thread
+
+        me = Author(id="111111111111111111", name="Josh")
+
+        def brief(tid, tag, when):
+            body = (
+                "10-03-26 | VIDEO-008 | Same Video\n\n" + tag + "\n\n"
+                "\U0001f4dd SCRIPT <@111111111111111111>\n• Deadline: 9/28/2026 @ 11:59 PM ET\n"
+            )
+            return Thread(
+                id=tid, name="10-03-26 | VIDEO-008 | Same Video",
+                messages=[Message(id=tid + "m", author=me, content=body,
+                                  created_at=when)],
+                created_at=when,
+            )
+
+        threads = [
+            brief("1", "@ FNAF", datetime(2026, 9, 18, tzinfo=timezone.utc)),
+            brief("2", "@ Specular FNAF", datetime(2026, 9, 19, tzinfo=timezone.utc)),
+        ]
+        config = Config(my_user_ids=["111111111111111111"], my_roles=["SCRIPT"])
+        items = build_assignments(
+            threads, config, now=datetime(2026, 9, 20, tzinfo=timezone.utc)
+        )
+        self.assertEqual({i.project for i in items}, {"Specular FNAF"})
+        self.assertEqual(sum(1 for i in items if i.status == Status.DUPLICATE), 1)
+
+
+class TestShowInTheAudit(unittest.TestCase):
+    """What the parser filed each brief under is checkable without a terminal."""
+
+    def test_the_audit_counts_it_and_explain_names_it(self):
+        from pathlib import Path
+
+        from scriptcheck.audit import render_audit, render_explain
+        from scriptcheck.config import Config
+        from scriptcheck.engine import build_assignments
+        from scriptcheck.sources.export_json import load_threads
+
+        threads = load_threads(Path(__file__).parent / "fixtures" / "sample_threads.json")
+        config = Config(my_user_ids=["111111111111111111"], my_roles=["SCRIPT"])
+        items = build_assignments(threads, config)
+        audit = render_audit(threads, items, config)
+        self.assertRegex(audit, r"show found\s+\d+ / \d+")
+        trace = render_explain(threads[0], config)
+        self.assertRegex(trace, r"\n  show       : ")
+        # distinct from the Discord channel line the trace already carries
+        self.assertNotIn("  channel    :", trace)
