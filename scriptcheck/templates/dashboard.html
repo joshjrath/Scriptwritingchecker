@@ -118,8 +118,19 @@
     --sheen-strength: 22%;
   }
 
+  /* Squared paper, ruled onto the page itself. It used to be a fixed layer
+     behind everything - a whole screen of pixels held in memory and composited
+     on every frame for a background that never changes. Painted into the page,
+     it costs nothing once drawn, and scrolls with the sheet like paper does. */
   body {
-    background: var(--bg-0);
+    background-color: var(--bg-0);
+    background-image:
+      radial-gradient(120% 60% at 50% -10%, var(--bg-1) 0%, transparent 70%),
+      linear-gradient(to right, var(--rule) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--rule) 1px, transparent 1px);
+    background-size: 100% 900px, 104px 104px, 104px 104px;
+    background-repeat: no-repeat, repeat, repeat;
+    background-position: 0 0, -1px -1px, -1px -1px;
     color: var(--ink);
     font-family: var(--font-body);
     font-size: 15px;
@@ -129,29 +140,9 @@
   }
 
   /* ---------- the ruled ground ---------- */
-  /* Squared paper, fixed behind everything. The panels sit on it as boxes
-     ruled onto the sheet rather than as objects floating above it. */
-  .aurora {
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    background-color: var(--bg-0);
-    background-image:
-      linear-gradient(to right, var(--rule) 1px, transparent 1px),
-      linear-gradient(to bottom, var(--rule) 1px, transparent 1px);
-    background-size: 104px 104px;
-    background-position: -1px -1px;
-  }
-  .blob { display: none; }
-  .b1, .b2, .b3 { display: none; }
-  /* A single soft lift behind the top of the page, so a long board does not
-     read as one flat field. */
-  .grain {
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(120% 60% at 50% -10%, var(--bg-1) 0%, transparent 70%);
-  }
+  /* Drawn on body now (see above); the old background element stays in the
+     markup, switched off. */
+  .aurora { display: none; }
 
   /* ---------- boxes ---------- */
   /* Held by their edge, not by a shadow: one hairline, square corners. */
@@ -178,12 +169,10 @@
     z-index: 30;
     border-radius: 0;
     border-width: 0 0 1px;
-    background: color-mix(in srgb, var(--bg-0) 92%, transparent);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-  }
-  @supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
-    .topbar { background: var(--bg-0); }
+    /* Solid rather than blurred: at 92% opacity the blur was all but
+       invisible, and it made the browser re-sample and re-blur whatever
+       scrolled or animated beneath the header, every frame. */
+    background: var(--bg-0);
   }
   .bar-inner {
     display: flex;
@@ -642,7 +631,13 @@
 
   /* ---------- cards ---------- */
   .urgent { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--stroke); }
+  /* A busy board is ten thousand pixels tall. content-visibility lets the
+     browser skip laying out, painting and animating whatever is off screen,
+     and pick it up as it scrolls into view; the intrinsic size keeps the
+     scrollbar honest until then, and "auto" remembers the real one after. */
   .card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 170px;
     position: relative;
     padding: 16px 20px 16px 23px;
     overflow: hidden;
@@ -933,7 +928,11 @@
   .chip .n { margin-left: 7px; opacity: .65; }
   .chip[aria-pressed="true"] .n { opacity: .8; }
 
-  #everything { scroll-margin-top: 86px; }
+  #everything {
+    scroll-margin-top: 86px;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 1400px;
+  }
 
   /* ---------- table ---------- */
   .tablewrap { overflow-x: auto; border-radius: 0; }
@@ -1046,6 +1045,9 @@
     table, tbody, td { display: block; width: 100%; box-sizing: border-box; }
     thead { display: none; }
     tbody tr {
+      /* Each row is its own card on a phone, so skip the ones off screen. */
+      content-visibility: auto;
+      contain-intrinsic-size: auto 200px;
       background: var(--panel);
       border: 1px solid var(--stroke);
       border-top: 0;
@@ -1144,37 +1146,50 @@
 
   /* Held still for most of the cycle, then crossing quickly: motion with rests
      reads as deliberate, where constant movement reads as a loading state. */
+  /* Moved with transform, not background-position: the band is drawn once
+     and slid across by the compositor. Animating background-position forced
+     a full repaint of the card on every frame - for every overdue card, on
+     screen or not. */
   @keyframes card-sweep {
-    0%, 64%  { background-position: -60% 0; }
-    100%     { background-position: 260% 0; }
+    0%, 64%  { transform: translateX(-100%); }
+    100%     { transform: translateX(240%); }
   }
   .card.pulsing:not(.gentle)::after {
     content: "";
     position: absolute;
-    inset: 0;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 45%;
     pointer-events: none;
     background: linear-gradient(104deg,
-      transparent 40%,
+      transparent 0%,
       color-mix(in srgb, var(--tone, var(--accent)) var(--sheen-strength, 18%), transparent) 50%,
-      transparent 60%);
-    background-size: 180% 100%;
-    background-repeat: no-repeat;
+      transparent 100%);
     animation: card-sweep 6.4s var(--ease-travel) infinite;
     animation-delay: var(--phase-sweep, 0s);
   }
 
+  /* The rule itself stays still (.hero::after); a bright segment slides
+     along it by transform. The old version animated the rule's background,
+     which repainted it at 60 frames a second, forever. */
   @keyframes rule-sweep {
-    0%   { background-position: -80% 0; opacity: .55; }
-    50%  { opacity: 1; }
-    100% { background-position: 180% 0; opacity: .55; }
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(290%); }
   }
-  .hero.urgent::after {
-    background-image: linear-gradient(90deg,
-      var(--tone, var(--accent)) 0%,
-      color-mix(in srgb, var(--tone, var(--accent)) 35%, white) 50%,
-      var(--tone, var(--accent)) 100%);
-    background-size: 55% 100%;
-    background-repeat: repeat-x;
+  .hero.urgent::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    width: 35%;
+    height: 2px;
+    pointer-events: none;
+    background: linear-gradient(90deg,
+      transparent,
+      color-mix(in srgb, var(--tone, var(--accent)) 35%, white),
+      transparent);
     animation: rule-sweep 5.2s var(--ease-travel) infinite;
     animation-delay: var(--phase-shimmer, 0s);
   }
@@ -1201,10 +1216,10 @@
     .card.enter, .tile.enter, .hero.swap .hero-grid,
     .plot.enter .stack, .plot.enter .col-cap,
     .card.pulsing::before, .card.pulsing::after,
-    .hero.urgent::after, .tile.pulsing::before, .col.late .stack {
+    .hero.urgent::before, .tile.pulsing::before, .col.late .stack {
       animation: none !important;
     }
-    .card.pulsing:not(.gentle)::after { content: none; }
+    .card.pulsing:not(.gentle)::after, .hero.urgent::before { content: none; }
     .past-briefs .chev { transition: none; }
     .brief-copy, .briefjump { transition: none; }
     .brief.flash { animation: none; }
@@ -1338,7 +1353,13 @@
     border: 1px dashed var(--stroke);
   }
 
-  .brief { scroll-margin-top: 90px; padding: 0; overflow: hidden; }
+  .brief {
+    scroll-margin-top: 90px;
+    padding: 0;
+    overflow: hidden;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 560px;
+  }
   .brief + .brief { border-top: 0; }
   .brief-head {
     display: flex;
@@ -3279,6 +3300,16 @@
     button.textContent = "Briefs";
     if (open.length) button.appendChild(el("span", "n", String(open.length)));
 
+    // Built only while the tab is open. A busy season is thousands of nodes
+    // of verbatim brief text, and this runs on every refresh - there is no
+    // reason to hold all of it, or rebuild it every minute, for a tab that is
+    // not being looked at. setTab draws it the moment it is.
+    if (state.tab !== "briefs") {
+      host.textContent = "";
+      document.getElementById("past-list").textContent = "";
+      return;
+    }
+
     host.textContent = "";
     if (open.length) {
       renderBriefDays(host, open, now);
@@ -3319,6 +3350,8 @@
       // Linkable, and survives a refresh.
       if (history.replaceState) history.replaceState(null, "", name === "briefs" ? "#briefs" : "#");
     } catch (err) { /* file:// or blocked history */ }
+    // Opening the tab builds it; leaving it lets it go.
+    renderBriefs();
   }
 
   function render() {
@@ -3413,9 +3446,22 @@
     if (!data || !data.assignments) return;
     DATA = data;
     ITEMS = data.assignments;
-    render();
+    renderWhenSeen();
     setStatus(polling ? "live" : "live", polling ? "updating" : "live");
   }
+
+  /* A board left open in a background tab still gets every push and its
+     minute tick. Rebuilding thousands of nodes nobody can see is pure churn,
+     so it waits, and draws once when the tab is looked at again. */
+  var unseen = false;
+  function renderWhenSeen() {
+    if (document.hidden) { unseen = true; return; }
+    unseen = false;
+    render();
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden && unseen) renderWhenSeen();
+  });
 
   function refresh() {
     return fetch("report.json?view=board", { cache: "no-store" })
@@ -3476,8 +3522,8 @@
   if (window.location.hash === "#briefs" && !document.getElementById("tab-briefs-btn").hidden) {
     setTab("briefs");
   }
-  setInterval(tickHero, 1000);
-  setInterval(render, 60e3);
+  setInterval(function () { if (!document.hidden) tickHero(); }, 1000);
+  setInterval(renderWhenSeen, 60e3);
   if (DATA.live) goLive();
 })();
 </script>

@@ -537,7 +537,7 @@ class TestJumpToBrief(unittest.TestCase):
 
     def test_the_landing_clears_the_sticky_header(self):
         # scrollIntoView would otherwise tuck the panel under the top bar.
-        self.assertIn(".brief { scroll-margin-top:", self.html)
+        self.assertRegex(self.html, r"\.brief \{\s*scroll-margin-top:")
 
     def test_a_viewer_without_brief_text_gets_no_button(self):
         block = self.html.split("function briefLink", 1)[1].split("\n  }", 1)[0]
@@ -569,7 +569,7 @@ class TestLayout(unittest.TestCase):
         self.assertIn("if (state.filter) revealTable();", block)
         self.assertIn('<section id="everything">', self.html)
         # and it lands clear of the sticky header
-        self.assertIn("#everything { scroll-margin-top:", self.html)
+        self.assertRegex(self.html, r"#everything \{\s*scroll-margin-top:")
 
     def test_the_deadline_and_its_countdown_share_a_column(self):
         # A separate Time column pushed the owner's table past its panel.
