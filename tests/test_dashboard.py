@@ -278,7 +278,7 @@ class TestPostingDate(unittest.TestCase):
         # It used to be an "airs Sep 23" fragment in the same grey line as the
         # deadline; it now has its own chip so the two are never confused.
         self.assertNotIn('"airs "', self.html)
-        self.assertIn('"postdate"', self.html)
+        self.assertIn('field(list, "Posts"', self.html)
 
 
 class TestBriefs(unittest.TestCase):
@@ -504,44 +504,91 @@ class TestBriefMarkDelivered(unittest.TestCase):
         self.assertIn("if (DATA.can_edit === false) return null;", viewer)
 
 
-class TestJumpToBrief(unittest.TestCase):
-    """Every script on the board links across to the brief it came from."""
+class TestBriefInline(unittest.TestCase):
+    """Every script on the board opens its brief right underneath it, so
+    reading or copying one never costs your place on the board."""
 
     @classmethod
     def setUpClass(cls):
         cls.items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
         cls.html = render_dashboard(cls.items, CONFIG, now=NOW, can_edit=True, live=True)
 
+    def block(self, name):
+        return self.html.split("function " + name, 1)[1].split("\n  }", 1)[0]
+
     def test_the_button_is_offered_in_every_listing(self):
-        # The table builds its own title row; the cards and the hero both go
-        # through metaRow, so one call there covers them.
-        table = self.html.split("function renderTable", 1)[1].split("\n  }", 1)[0]
-        self.assertIn("briefLink(item)", table)
-        meta = self.html.split("function metaRow", 1)[1].split("\n  }", 1)[0]
-        self.assertIn("briefLink(item)", meta)
+        self.assertIn('briefLink(item, "row")', self.block("renderTable"))
+        self.assertIn('briefLink(heroItem, "hero")', self.block("renderHero"))
+        # the cards get theirs through the action bar
+        self.assertIn('actionBar(item, "card")', self.block("renderUrgent"))
+        self.assertIn("briefLink(item, place)", self.block("actionBar"))
+
+    def test_each_listing_puts_the_open_brief_back_after_a_rebuild(self):
+        # Every refresh rebuilds the board; an open brief has to survive it.
+        self.assertIn('mountInline(tr, item, "row", false)', self.block("renderTable"))
+        self.assertIn('mountInline(host, heroItem, "hero", false)', self.block("renderHero"))
+        self.assertIn('mountInline(card, item, "card", false)', self.block("renderUrgent"))
+
+    def test_it_never_leaves_the_board(self):
+        # The old button switched to the Briefs tab and scrolled away.
+        toggle = self.block("briefLink")
+        self.assertNotIn("setTab(", toggle)
+        self.assertNotIn("scrollIntoView", toggle)
+        self.assertNotIn("function openBrief", self.html)
+
+    def test_it_says_whether_it_is_open(self):
+        toggle = self.block("briefLink")
+        self.assertIn('"aria-expanded"', toggle)
+        self.assertIn('"aria-controls"', toggle)
+
+    def test_open_state_is_per_spot(self):
+        # The same script can be in the hero, a card and the table at once;
+        # opening one must not open the others.
+        self.assertIn('return place + ":" + item.thread_id;', self.html)
+
+    def test_the_brief_comes_with_its_copy_button(self):
+        self.assertIn("copyButton(item)", self.block("inlineBrief"))
+
+    def test_the_text_is_never_parsed_as_markup(self):
+        self.assertIn('el("pre", "ib-body", item.brief_text)', self.block("inlineBrief"))
+
+    def test_a_table_brief_spans_the_whole_row(self):
+        mount = self.block("mountInline")
+        self.assertIn("td.colSpan = spot.children.length;", mount)
 
     def test_a_brief_gets_no_button_back_to_itself(self):
-        panel = self.html.split("function briefPanel", 1)[1].split("\n  }", 1)[0]
-        self.assertNotIn("briefLink(", panel)
-
-    def test_the_panels_carry_an_id_to_land_on(self):
-        self.assertIn('panel.id = "brief-" + item.thread_id;', self.html)
-        self.assertIn('document.getElementById("brief-" + threadId)', self.html)
-
-    def test_it_opens_the_tab_before_scrolling(self):
-        block = self.html.split("function openBrief", 1)[1].split("\n  }", 1)[0]
-        self.assertLess(block.index('setTab("briefs")'), block.index("scrollIntoView"))
-        # a delivered brief sits inside the collapsed disclosure
-        self.assertIn('closest("details")', block)
-        self.assertIn("details.open = true", block)
-
-    def test_the_landing_clears_the_sticky_header(self):
-        # scrollIntoView would otherwise tuck the panel under the top bar.
-        self.assertRegex(self.html, r"\.brief \{\s*scroll-margin-top:")
+        self.assertNotIn("briefLink(", self.block("briefPanel"))
+        self.assertNotIn("briefLink(", self.block("inlineBrief"))
 
     def test_a_viewer_without_brief_text_gets_no_button(self):
-        block = self.html.split("function briefLink", 1)[1].split("\n  }", 1)[0]
-        self.assertIn("if (!item.brief_text) return null;", block)
+        self.assertIn("if (!item.brief_text) return null;", self.block("briefLink"))
+
+    def test_the_briefs_tab_panels_still_carry_an_id(self):
+        self.assertIn('panel.id = "brief-" + item.thread_id;', self.html)
+
+
+class TestCardLayout(unittest.TestCase):
+    """A card reads top to bottom: what it is, the facts under labels, then
+    the things to do about it on a line of their own."""
+
+    @classmethod
+    def setUpClass(cls):
+        items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.html = render_dashboard(items, CONFIG, now=NOW, can_edit=True, live=True)
+
+    def test_facts_sit_under_labels(self):
+        fields = self.html.split("function fieldList", 1)[1].split("\n  }", 1)[0]
+        for label in ('"Due"', '"Posts"', '"Length"'):
+            self.assertIn(label, fields)
+
+    def test_the_actions_are_apart_from_the_facts(self):
+        urgent = self.html.split("function renderUrgent", 1)[1].split("\n  }", 1)[0]
+        self.assertLess(urgent.index("fieldList(item, now)"), urgent.index("actionBar("))
+        self.assertNotIn("markButton(item)", urgent)
+
+    def test_mark_delivered_is_the_one_filled_button(self):
+        self.assertIn('" primary"', self.html)
+        self.assertIn("  .markbtn.primary {", self.html)
 
 
 class TestLayout(unittest.TestCase):
