@@ -567,6 +567,29 @@ class TestBriefInline(unittest.TestCase):
         self.assertIn('panel.id = "brief-" + item.thread_id;', self.html)
 
 
+class TestSortByDelivered(unittest.TestCase):
+    """The table can put the most recently delivered script on top."""
+
+    @classmethod
+    def setUpClass(cls):
+        items = build_assignments(load_threads(FIXTURE), CONFIG, now=NOW)
+        cls.html = render_dashboard(items, CONFIG, now=NOW, can_edit=True, live=True)
+
+    def test_it_is_offered(self):
+        self.assertIn('<option value="delivered">Sort: last delivered</option>', self.html)
+
+    def test_newest_delivery_first_and_open_scripts_after(self):
+        block = self.html.split("function sorted", 1)[1].split("\n  }", 1)[0]
+        self.assertIn('state.sort === "delivered"', block)
+        self.assertIn("return tb - ta;", block)
+        self.assertIn("if (ta === null) return 1;", block)
+
+    def test_it_reads_the_same_delivery_the_column_shows(self):
+        block = self.html.split("function deliveredAt", 1)[1].split("\n  }", 1)[0]
+        self.assertIn("firstSubmission(item)", block)
+        self.assertIn("if (!isDelivered(item)) return null;", block)
+
+
 class TestCardLayout(unittest.TestCase):
     """A card reads top to bottom: what it is, the facts under labels, then
     the things to do about it on a line of their own."""

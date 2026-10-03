@@ -1744,6 +1744,7 @@
           <option value="urgency">Sort: urgency</option>
           <option value="deadline">Sort: deadline</option>
           <option value="slate">Sort: posting date</option>
+          <option value="delivered">Sort: last delivered</option>
           <option value="show">Sort: show</option>
           <option value="title">Sort: title</option>
         </select>
@@ -2883,6 +2884,16 @@
       .join(" ").toLowerCase().indexOf(state.query) !== -1;
   }
 
+  /* When a script was handed in, by the same delivery the Delivered column
+     shows; null while it is still out. Delivered without a readable time
+     counts as the oldest, so it sinks below the dated ones. */
+  function deliveredAt(item) {
+    if (!isDelivered(item)) return null;
+    var sub = firstSubmission(item);
+    var t = sub && sub.posted_at ? +new Date(sub.posted_at) : NaN;
+    return isNaN(t) ? 0 : t;
+  }
+
   function sorted(list) {
     var copy = list.slice();
     var far = 8.64e15;
@@ -2906,6 +2917,18 @@
       var da = a.deadline ? +new Date(a.deadline) : far;
       var db = b.deadline ? +new Date(b.deadline) : far;
       if (state.sort === "deadline") return da - db;
+      if (state.sort === "delivered") {
+        // Most recently delivered first, then whatever is still open by
+        // deadline, so the latest hand-in is always the top row.
+        var ta = deliveredAt(a);
+        var tb = deliveredAt(b);
+        if (ta !== null || tb !== null) {
+          if (ta === null) return 1;
+          if (tb === null) return -1;
+          return tb - ta;
+        }
+        return da - db;
+      }
       var ra = META[a.live] ? META[a.live].rank : 9;
       var rb = META[b.live] ? META[b.live].rank : 9;
       return ra - rb || da - db;
